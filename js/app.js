@@ -14,7 +14,7 @@
   // ---------------------------------------------------------------- state
   const DEFAULTS = {
     tab: 'play',
-    set: { seats: ['you', 'hard'], hints: true, study: false, farmers: true, farm: '3rd', smallCity: 4 },
+    set: { seats: ['you', 'hard'], hints: true, study: false, farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false },
     table: { names: ['You', 'Player 2'], me: 0, drawn: [], need: [null, null, null, null], scores: [0, 0], log: [], kind: 'cityDone' },
     game: null,
   };
@@ -99,7 +99,7 @@
     const name = S.set.oname || 'Player';
     const seats = S.set.seats.map((k, i) => (k === 'you' ? 'human' : { kind: 'computer', name: LEVEL_NAME[k] }));
     const levels = S.set.seats.map((k) => (k === 'you' ? 'hard' : k));
-    const r = await n.createRoom({ name, seats, options: { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, levels } });
+    const r = await n.createRoom({ name, seats, options: { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: S.set.river, ic: S.set.ic, levels } });
     netBusy = false;
     if (!r.ok) netErr = r.message;
     renderSettings();
@@ -120,6 +120,8 @@
     hints: 'Each lit square shows the most you can expect from putting your tile there (best turn and meeple). It counts points you score now, the likely value of unfinished cities, roads and monasteries, and subtracts a share of what you hand the others.',
     study: 'After each of your moves you see the best move and how many points yours gave up by the same measure. Squares where no tile left in the bag can ever fit are marked in red.',
     farm: 'Current rules: each farm scores 3 for every finished city it touches. First edition: each finished city pays 4 to whoever has the most farmers in all the farms touching it.',
+    river: 'The River expansion: the game starts from the spring and the 12 river tiles are laid first, one per turn, ending with the lake. A river may not turn the same way twice in a row (no U-turns). Meeples can go on the land beside the river, never on the water.',
+    ic: 'Inns & Cathedrals: 18 more tiles. A road with an inn scores 2 per tile when finished but nothing if unfinished at the end; a city with a cathedral scores 3 per tile and shield, or nothing if unfinished. Each player also gets one big meeple that counts as two (tap a circle twice to use it). Up to 6 players.',
     small: 'Current rules: a finished 2-tile city is worth 4 like any other city (2 per tile). Before 2004 (first editions) it was only worth 2.',
     strength: 'Measured by letting the computers play thousands of full games against each other with the same tile bags and seats swapped. The table shows how often the row player wins.',
     online: 'Create a room and friends type its 5-letter code on their own phone to join. Every "You" seat above becomes a seat for a person; computer seats stay computers. Your phone runs the game and the computers, so keep this page open until the game ends. Free: no account needed.',
@@ -148,7 +150,7 @@
     if (S.game && S.game.online) leaveOnline();
     gen++;
     const seats = S.set.seats.slice();
-    const st = E.newGame({ players: seats.length, farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, seed: (Math.random() * 2 ** 31) >>> 0 });
+    const st = E.newGame({ players: seats.length, farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: !!S.set.river, ic: !!S.set.ic, seed: (Math.random() * 2 ** 31) >>> 0 });
     S.game = { st, seats, lost: [], race: [st.scores.slice()], log: [] };
     sel = null; handR = 0; ranked = null; rankedAt = -1; study = null; showBest = null; vs.user = false;
     save();
@@ -170,7 +172,7 @@
     return ranked;
   }
   function valueOf(m) {
-    const r = getRanked().find((q) => q.x === m.x && q.y === m.y && q.r === m.r && q.fi === m.fi);
+    const r = getRanked().find((q) => q.x === m.x && q.y === m.y && q.r === m.r && q.fi === m.fi && !!q.big === !!m.big);
     return r ? r.v : 0;
   }
 
@@ -259,7 +261,7 @@
       let any = false;
       for (let t = 0; t < left.length && !any; t++) {
         if (!left[t] && t !== st.cur) continue;
-        for (let r = 0; r < 4 && !any; r++) if (E.fits(st, x, y, t, r)) any = true;
+        for (let r = 0; r < 4 && !any; r++) if (E.canPlace(st, x, y, t, r)) any = true;
       }
       if (!any) out.push([x, y]);
     }
@@ -274,7 +276,7 @@
       let extra = '';
       if (tl.m) {
         const f = T.TYPES[tl.t].rot[tl.r].feats[tl.m[1]];
-        extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', 24);
+        extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? 34 : 24);
       }
       const isLast = st.last && st.last.x === x && st.last.y === y;
       // Drop-in motion plays once per move, not on every redraw.
@@ -301,7 +303,7 @@
       }
       if (sel) {
         const f = sel.fi >= 0 ? T.TYPES[st.cur].rot[sel.r].feats[sel.fi] : null;
-        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', 24) : '';
+        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? 34 : 24) : '';
         s += `<g class="ghost">${RD.tile(st.cur, sel.r, sel.x * 100, sel.y * 100, 100, extra)}</g>`;
         s += `<rect class="ghost-ring" x="${sel.x * 100}" y="${sel.y * 100}" width="100" height="100" rx="3"/>`;
       }
@@ -314,12 +316,13 @@
 
   function renderPlayers() {
     const g = S.game, st = g.st;
+    $('players').classList.toggle('many', g.seats.length >= 5);
     $('players').innerHTML = g.seats.map((k, i) => `
       <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}">
         <svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
         <div class="col"><span class="nm">${esc(seatName(i))}</span>
         <span class="sc">${st.scores[i]}</span></div>
-        <span class="mp" title="Meeples left">${st.meeples[i]}<svg viewBox="0 0 20 20" style="width:11px;height:11px;vertical-align:-1px;margin-left:1px"><use href="#meeple" fill="#969db4"/></svg></span>
+        <span class="mp" title="Meeples left">${st.meeples[i]}<svg viewBox="0 0 20 20" style="width:11px;height:11px;vertical-align:-1px;margin-left:1px"><use href="#meeple" fill="#969db4"/></svg>${st.opts.ic ? ` ${st.big[i]}<svg viewBox="0 0 20 20" style="width:15px;height:15px;vertical-align:-2px;margin-left:1px"><use href="#meeple" fill="#969db4"/></svg>` : ''}</span>
       </div>`).join('');
   }
 
@@ -336,7 +339,7 @@
         const [x, y] = R.feats[fi].spot;
         const on = sel.fi === fi;
         extra += `<g class="spot ${on ? 'on' : ''}" data-fi="${fi}"><circle cx="${x}" cy="${y}" r="15" fill="transparent"/>` +
-          (on ? RD.meeple(st.turn, x, y, R.feats[fi].type === 'field', 22) : '') +
+          (on ? RD.meeple(st.turn, x, y, R.feats[fi].type === 'field', sel.big ? 31 : 22) : '') +
           `<circle class="ring" cx="${x}" cy="${y}" r="${on ? 13 : 8}"/></g>`;
       }
     }
@@ -357,7 +360,7 @@
     $('btn-rotate').disabled = !human;
     $('btn-hint').disabled = !human;
     $('btn-place').disabled = !(human && sel);
-    $('btn-place').textContent = sel && sel.fi >= 0 ? 'Place + meeple' : 'Place';
+    $('btn-place').textContent = sel && sel.fi >= 0 ? (sel.big ? 'Place + big meeple' : 'Place + meeple') : 'Place';
     if (st.over) {
       const top = Math.max(...st.scores);
       const w = st.scores.map((v, i) => (v === top ? seatName(i) : null)).filter(Boolean);
@@ -400,7 +403,8 @@
       const tot = g.lost.reduce((a, b) => a + b, 0);
       h += `<div><h3>Points given up <button class="q" data-help="study">?</button></h3><div style="font-size:22px;font-weight:800">${tot.toFixed(1)} <span class="muted">over ${g.lost.length} moves</span></div></div>`;
     }
-    h += `<div><h3>Still in the bag</h3><div class="bag">${T.TYPES.map((t) =>
+    const inGame = T.TYPES.filter((t) => t.set === 'base' || (t.set === 'ic' && st.opts.ic) || (t.set === 'river' && st.opts.river && !t.spring));
+    h += `<div><h3>Still in the bag</h3><div class="bag">${inGame.map((t) =>
       `<div class="${left[t.idx] ? '' : 'z'}">${RD.tileSVG(t.idx, 0)}<span>${left[t.idx]}</span></div>`).join('')}</div></div>`;
     const recent = g.log.slice(-12).reverse();
     h += `<div><h3>Scoring</h3><ul class="log">${recent.length ? recent.map((e) => `<li>${esc(describe(e))}</li>`).join('') : '<li>Nothing scored yet</li>'}</ul></div>`;
@@ -529,7 +533,7 @@
     const x = Math.floor(wx / 100), y = Math.floor(wy / 100);
     pickCell(x, y);
   }
-  function legalRots(x, y) { const st = S.game.st; return [0, 1, 2, 3].filter((r) => E.fits(st, x, y, st.cur, r)); }
+  function legalRots(x, y) { const st = S.game.st; return [0, 1, 2, 3].filter((r) => E.canPlace(st, x, y, st.cur, r)); }
   function pickCell(x, y) {
     const rots = legalRots(x, y);
     if (!rots.length) return;
@@ -564,7 +568,7 @@
     $('tt-undo').disabled = !tb.drawn.length;
     const anyNeed = tb.need.some((n) => n);
     const match = anyNeed ? new Set(T.typesFitting(tb.need)) : new Set();
-    $('tgrid').innerHTML = T.TYPES.map((t) => `<button class="tbtn ${rem[t.idx] ? '' : 'out'} ${match.has(t.idx) ? 'match' : ''}" data-t="${t.idx}" aria-label="Tile ${t.id}, ${rem[t.idx]} left">${RD.tileSVG(t.idx, 0)}<span class="cnt">${rem[t.idx]}</span></button>`).join('');
+    $('tgrid').innerHTML = T.TYPES.filter((t) => t.set === 'base').map((t) => `<button class="tbtn ${rem[t.idx] ? '' : 'out'} ${match.has(t.idx) ? 'match' : ''}" data-t="${t.idx}" aria-label="Tile ${t.id}, ${rem[t.idx]} left">${RD.tileSVG(t.idx, 0)}<span class="cnt">${rem[t.idx]}</span></button>`).join('');
     // need picker
     document.querySelectorAll('#need-pick .ns').forEach((b) => {
       const v = tb.need[+b.dataset.side];
@@ -649,7 +653,7 @@
     const seats = s.seats.map((k, i) => `<div class="seat">${meepleIcon(i, 22)}${seg('seat' + i, [['you', 'You'], ['easy', 'Easy'], ['medium', 'Med'], ['hard', 'Hard']], k)}</div>`).join('');
     $('settings').innerHTML = `
       <section class="card set-sec"><h3>Play</h3>
-        <div class="set-row"><span class="l">Players</span>${seg('nseats', [[2, '2'], [3, '3'], [4, '4'], [5, '5']], s.seats.length)}</div>
+        <div class="set-row"><span class="l">Players</span>${seg('nseats', [[2, '2'], [3, '3'], [4, '4'], [5, '5']].concat(s.ic ? [[6, '6']] : []), s.seats.length)}</div>
         ${seats}
         <div class="set-row"><span class="l">Hints <button class="q" data-help="hints">?</button></span>${sw('hints', s.hints)}</div>
         <div class="set-row"><span class="l">Study mode <button class="q" data-help="study">?</button></span>${sw('study', s.study)}</div>
@@ -657,6 +661,8 @@
       </section>
       ${renderOnline()}
       <section class="card set-sec"><h3>Rules</h3>
+        <div class="set-row"><span class="l">River <button class="q" data-help="river">?</button></span>${sw('river', s.river)}</div>
+        <div class="set-row"><span class="l">Inns &amp; Cathedrals <button class="q" data-help="ic">?</button></span>${sw('ic', s.ic)}</div>
         <div class="set-row"><span class="l">Farmers</span>${sw('farmers', s.farmers)}</div>
         <div class="set-row"><span class="l">Farm scoring <button class="q" data-help="farm">?</button></span>${seg('farm', [['3rd', 'Current'], ['1st', '1st edition']], s.farm)}</div>
         <div class="set-row"><span class="l">2-tile city <button class="q" data-help="small">?</button></span>${seg('smallCity', [[4, '4 points'], [2, '2 points']], s.smallCity)}</div>
@@ -745,15 +751,19 @@
     // ---- play
     if (b.closest('#hand') && d.fi !== undefined) {
       if (!sel) return;
-      const fi = +d.fi; sel.fi = sel.fi === fi ? -1 : fi;
+      const fi = +d.fi, st = S.game.st, p = st.turn;
+      const small = E.hasMeeple(st, p, false), large = E.hasMeeple(st, p, true);
+      if (sel.fi !== fi) { sel.fi = fi; sel.big = !small; }
+      else if (!sel.big && large) sel.big = true;
+      else { sel.fi = -1; sel.big = false; }
       renderBoard(); renderHand(); renderDock(); return;
     }
     if (b.id === 'btn-rotate') { rotateSel(); return; }
-    if (b.id === 'btn-place') { if (sel && isHumanTurn()) submit({ type: 'place', x: sel.x, y: sel.y, r: sel.r, fi: sel.fi }); return; }
+    if (b.id === 'btn-place') { if (sel && isHumanTurn()) submit({ type: 'place', x: sel.x, y: sel.y, r: sel.r, fi: sel.fi, big: sel.fi >= 0 && !!sel.big }); return; }
     if (b.id === 'btn-hint') {
       if (!isHumanTurn()) return;
       const best = getRanked()[0];
-      sel = { x: best.x, y: best.y, r: best.r, fi: best.fi };
+      sel = { x: best.x, y: best.y, r: best.r, fi: best.fi, big: !!best.big };
       showBest = { x: best.x, y: best.y };
       renderBoard(); renderHand(); renderDock(); return;
     }
@@ -813,7 +823,9 @@
       save(); renderSettings(); return;
     }
     if (d.sw) {
-      S.set[d.sw] = !S.set[d.sw]; save(); renderSettings();
+      S.set[d.sw] = !S.set[d.sw];
+      if (d.sw === 'ic' && !S.set.ic && S.set.seats.length > 5) S.set.seats.length = 5;   // 6 players needs the 6th colour from I&C
+      save(); renderSettings();
       if (S.game && (d.sw === 'hints' || d.sw === 'study')) rankedAt = -1;
       return;
     }

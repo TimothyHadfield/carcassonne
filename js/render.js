@@ -10,9 +10,10 @@
   const COL = {
     field: '#7cab52', fieldDark: '#6a9946', city: '#d9a866', wall: '#7b5228', road: '#f2ead6', roadEdge: '#8d7c5c',
     roof: '#b4553d', monk: '#efe3c6', shield: '#2f62b8',
+    water: '#5fa8dc', bank: '#3b78a6', stone: '#c9c3b6', hedge: '#4c7a33',
   };
-  const PLAYER = ['#4f8ff7', '#f0c43c', '#e5534b', '#4fbf6a', '#2a2d36'];
-  const PLAYER_NAME = ['Blue', 'Yellow', 'Red', 'Green', 'Black'];
+  const PLAYER = ['#4f8ff7', '#f0c43c', '#e5534b', '#4fbf6a', '#2a2d36', '#a3a8b4'];
+  const PLAYER_NAME = ['Blue', 'Yellow', 'Red', 'Green', 'Black', 'Grey'];
 
   // Shared <defs>: put once in any SVG that draws tiles.
   const DEFS = `<defs>
@@ -49,7 +50,7 @@
     return '';
   }
 
-  function roadPath(sides, ends) {
+  function roadPath(sides, end) {
     if (sides.length === 2) {
       const [a, b] = sides;
       const [x1, y1] = MID[a], [x2, y2] = MID[b];
@@ -58,23 +59,34 @@
       return `M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`;
     }
     const [x1, y1] = MID[sides[0]];
-    return `M${x1} ${y1} L50 50`;
+    const [ex, ey] = end || [50, 50];
+    return `M${x1} ${y1} L${ex} ${ey}`;
   }
 
   // Inner drawing of a tile type in base orientation (no rotation).
   const cache = {};
   function tileBody(t) {
     if (cache[t]) return cache[t];
-    const R = T.TYPES[t].rot[0];
+    const TT = T.TYPES[t], R = TT.rot[0];
+    const base = (f) => TT.feats[R.feats.indexOf(f)];
     let s = `<rect width="100" height="100" fill="url(#grass)"/>`;
+    if (TT.hedge) s += `<path d="${TT.hedge}" stroke="${COL.hedge}" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="1 6"/>`;
+    // River under everything else (roads cross it on bridges).
+    for (const f of R.feats.filter((q) => q.type === 'river')) {
+      const d = roadPath(f.sides);
+      s += `<path d="${d}" stroke="${COL.bank}" stroke-width="20" fill="none"/><path d="${d}" stroke="${COL.water}" stroke-width="15" fill="none"/>`;
+      s += `<path d="${d}" stroke="#a9d3f0" stroke-width="1.6" fill="none" stroke-dasharray="5 9" opacity=".8"/>`;
+      if (TT.spring) s += `<circle cx="50" cy="50" r="11" fill="${COL.water}" stroke="${COL.bank}" stroke-width="2.5"/><circle cx="50" cy="50" r="4" fill="#a9d3f0"/>`;
+      if (TT.lake) s += `<ellipse cx="46" cy="52" rx="30" ry="22" fill="${COL.water}" stroke="${COL.bank}" stroke-width="2.5"/><path d="M30 50 q6 -4 12 0 M48 60 q6 -4 12 0" stroke="#a9d3f0" stroke-width="1.6" fill="none"/>`;
+    }
     const roads = R.feats.filter((f) => f.type === 'road');
     const ends = roads.filter((f) => f.sides.length === 1).length;
     for (const f of roads) {
-      const d = roadPath(f.sides, ends);
+      const d = roadPath(f.sides, base(f).end);
       s += `<path d="${d}" stroke="${COL.roadEdge}" stroke-width="12" fill="none" stroke-linecap="butt"/>`;
       s += `<path d="${d}" stroke="${COL.road}" stroke-width="8" fill="none" stroke-linecap="butt"/>`;
     }
-    if (ends >= 3) {
+    if (ends >= 3 || TT.village) {
       s += `<rect x="40" y="40" width="20" height="20" rx="2" fill="${COL.monk}" stroke="${COL.wall}" stroke-width="2"/>`;
       s += `<path d="M38 42 L50 32 L62 42 Z" fill="${COL.roof}"/>`;
     }
@@ -87,6 +99,26 @@
         s += `<path transform="translate(${sx - 7} ${sy})" d="M0 0 H14 V7 Q14 13 7 16 Q0 13 0 7 Z" fill="${COL.shield}" stroke="#fff" stroke-width="1.6"/>`;
         s += `<path transform="translate(${sx - 7} ${sy})" d="M3 5 L7 9 L11 5" stroke="#fff" stroke-width="1.6" fill="none"/>`;
       }
+    }
+    // Inn: a small house with a pond beside the road (Inns & Cathedrals).
+    for (const f of roads) {
+      const at = base(f).inn;
+      if (!at) continue;
+      const [x, y] = at;
+      s += `<g transform="translate(${x - 12} ${y - 11})">
+        <ellipse cx="17" cy="19" rx="9" ry="4.5" fill="${COL.water}" stroke="${COL.bank}" stroke-width="1.2"/>
+        <rect x="2" y="8" width="15" height="11" rx="1" fill="${COL.monk}" stroke="${COL.wall}" stroke-width="1.6"/>
+        <path d="M0 9.5 L9.5 1.5 L19 9.5 Z" fill="#3f6fb0" stroke="${COL.wall}" stroke-width="1.3" stroke-linejoin="round"/>
+        <rect x="7.5" y="13" width="4" height="6" fill="${COL.wall}"/></g>`;
+    }
+    // Cathedral: a big stone church in the middle of the city.
+    for (const f of R.feats.filter((q) => q.cathedral)) {
+      s += `<g transform="translate(34 28)">
+        <rect x="2" y="18" width="30" height="20" rx="1" fill="${COL.stone}" stroke="${COL.wall}" stroke-width="2"/>
+        <path d="M0 20 L17 8 L34 20 Z" fill="#8c8f99" stroke="${COL.wall}" stroke-width="1.6" stroke-linejoin="round"/>
+        <rect x="12" y="0" width="10" height="20" fill="${COL.stone}" stroke="${COL.wall}" stroke-width="1.8"/>
+        <path d="M10.5 1 L17 -8 L23.5 1 Z" fill="#8c8f99" stroke="${COL.wall}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M14 30 a3 3 0 0 1 6 0 V38 H14 Z" fill="${COL.wall}"/><circle cx="17" cy="9" r="2.4" fill="#f4d58a"/></g>`;
     }
     for (const f of R.feats.filter((q) => q.type === 'cloister')) {
       const [x, y] = f.spot;
@@ -110,6 +142,7 @@
   function meeple(p, x, y, lying, size) {
     const s = size || 22;
     const stroke = p === 4 ? '#c9ccd6' : 'rgba(0,0,0,.55)';
+    // (a large meeple is just drawn bigger: callers pass a bigger size)
     const rot = lying ? ` rotate(90 ${x} ${y})` : '';
     return `<g transform="translate(${x - s / 2} ${y - s / 2})${rot ? '' : ''}" class="meeple">
       <use href="#meeple" width="${s}" height="${s}" fill="${PLAYER[p]}" stroke="${stroke}" stroke-width="1.2"

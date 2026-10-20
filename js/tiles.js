@@ -1,4 +1,5 @@
-/* Carcassonne tile set (base game, 72 tiles incl. the start tile).
+/* Carcassonne tile sets: base game (72 tiles incl. the start tile), The River
+ * (12, first edition) and Inns & Cathedrals (18).
  *
  * Every tile edge is split into three "ports" so roads and fields can be told
  * apart: side s (0=N, 1=E, 2=S, 3=W), position k (0,1,2) going clockwise round
@@ -30,9 +31,10 @@
   // f: [type, ports, spot[x,y], extra]. Field "adj" lists the feature indexes of
   // cities that field touches (used for farm scoring).
   const C = (p, spot, x) => Object.assign({ type: 'city', p, spot }, x || {});
-  const R = (p, spot) => ({ type: 'road', p, spot });
+  const R = (p, spot, x) => Object.assign({ type: 'road', p, spot }, x || {});
   const F = (p, spot, adj) => ({ type: 'field', p, spot, adj: adj || [] });
   const M = (spot) => ({ type: 'cloister', p: '', spot });
+  const I = (p) => ({ type: 'river', p, spot: [50, 50] });   // river: joins like a road, never claimed or scored
 
   const BASE = [
     { id: 'A', count: 2, f: [M([50, 46]), R('S1', [50, 88]), F('N E W S0 S2', [18, 18])] },
@@ -63,14 +65,65 @@
     { id: 'X', count: 1, f: [R('N1', [50, 18]), R('E1', [82, 50]), R('S1', [50, 82]), R('W1', [18, 50]),
       F('N2 E0', [80, 20]), F('E2 S0', [80, 80]), F('S2 W0', [20, 80]), F('W2 N0', [20, 20])] },
   ];
+  BASE.forEach((d) => { d.set = 'base'; });
+
+  // The River (first edition, 2001): 12 tiles. Layout and counts checked against
+  // the JCloisterZone tile file (river.xml, set river/1:1) and the Complete
+  // Annotated Rules v7.3 p.30 tile picture list. See docs/rules-check.md.
+  // Spring and lake are one field all round, as in the official rules.
+  const RIVER = [
+    { id: 'RS', count: 1, spring: 1, f: [I('E1'), F('N E0 E2 S W', [24, 24])] },
+    { id: 'RL', count: 1, lake: 1, f: [I('W1'), F('N E S W0 W2', [80, 20])] },
+    { id: 'RA', count: 1, f: [C('N', [50, 12]), C('S', [50, 88]), I('W1 E1'), F('E0 W2', [22, 33], [0]), F('E2 W0', [78, 67], [1])] },
+    { id: 'RB', count: 1, f: [C('N', [50, 12]), R('S1', [50, 84], { end: [50, 22] }), I('W1 E1'),
+      F('E0', [84, 32], [0]), F('W2', [16, 32], [0]), F('E2 S0', [82, 80]), F('W0 S2', [18, 80])] },
+    { id: 'RC', count: 1, f: [M([50, 24]), R('S1', [50, 84], { end: [50, 34] }), I('W1 E1'),
+      F('W2 N E0', [16, 16]), F('E2 S0', [82, 82]), F('W0 S2', [18, 82])] },
+    { id: 'RD', count: 1, f: [R('W1 E1', [30, 50]), I('N1 S1'), F('W2 N0', [18, 18]), F('N2 E0', [82, 18]), F('E2 S0', [82, 82]), F('W0 S2', [18, 82])] },
+    { id: 'RE', count: 2, f: [I('W1 E1'), F('W2 N E0', [50, 20]), F('W0 S E2', [50, 80])] },
+    { id: 'RF', count: 1, f: [C('N W', [26, 26]), I('S1 E1'), F('S2 E0', [52, 56], [0]), F('E2 S0', [89, 89])] },
+    { id: 'RG', count: 1, f: [R('N1 E1', [69, 31]), I('W1 S1'), F('W2 N0 E2 S0', [46, 50]), F('N2 E0', [89, 11]), F('W0 S2', [11, 89])] },
+    { id: 'RH', count: 2, f: [I('W1 S1'), F('W2 N E S0', [65, 35]), F('W0 S2', [12, 88])] },
+  ];
+  RIVER.forEach((d) => { d.set = 'river'; });
+
+  // Inns & Cathedrals: 18 tiles (6 inns, 2 cathedrals). Layout and counts from
+  // the JCloisterZone file (inns_and_cathedrals.xml, first-edition set), count
+  // checked against the Hans im Glueck rules ("18 new land tiles").
+  const IC = [
+    { id: 'Ka', count: 2, f: [C('N E S W', [30, 72], { cathedral: 1 })] },
+    { id: 'Kb', count: 1, f: [M([50, 50]), R('W1', [14, 50], { end: [36, 50] }), R('E1', [86, 50], { end: [64, 50] }), F('E0 N W2', [50, 14]), F('E2 S W0', [50, 86])] },
+    { id: 'Kc', count: 1, f: [C('N', [50, 11]), C('W', [11, 50]), C('E', [89, 50]), C('S', [50, 89]), F('', [50, 50], [0, 1, 2, 3])] },
+    { id: 'Kd', count: 1, f: [C('N', [50, 12]), C('W', [12, 50]), C('E', [88, 50]), F('S', [50, 72], [0, 1, 2])] },
+    { id: 'Ke', count: 1, village: 1, f: [C('N', [50, 11]), C('S', [50, 89]), R('W1', [22, 50]), R('E1', [78, 50]),
+      F('E2', [88, 72], [1]), F('W0', [12, 72], [1]), F('E0', [88, 28], [0]), F('W2', [12, 28], [0])] },
+    { id: 'Kf', count: 1, f: [C('N W', [26, 26], { shield: 1 }), C('S', [50, 89]), F('E', [74, 52], [0, 1])] },
+    { id: 'Kg', count: 1, hedge: 'M62 21 Q78 60 100 100', f: [C('N', [42, 12]), F('E', [90, 50], [0]), F('W S', [36, 66], [0])] },
+    { id: 'Kh', count: 1, f: [C('N', [50, 12]), R('S1', [50, 80], { end: [50, 22] }), F('W S2', [22, 60], [0]), F('E S0', [78, 60], [0])] },
+    { id: 'Ki', count: 1, f: [C('N W', [26, 26]), R('E1', [82, 50], { end: [44, 50] }), F('E0', [84, 28], [0]), F('E2 S', [66, 80], [0])] },
+    { id: 'Kj', count: 1, f: [C('E W', [50, 50], { shield: 1 }), R('N1', [50, 8], { end: [50, 22] }), R('S1', [50, 92], { end: [50, 78] }),
+      F('N0', [24, 7], [0]), F('N2', [76, 7], [0]), F('S0', [76, 93], [0]), F('S2', [24, 93], [0])] },
+    { id: 'Kk', count: 1, f: [C('N W', [26, 26]), R('S1', [50, 84], { inn: [70, 74], end: [46, 46] }), F('S2', [22, 88], [0]), F('S0 E', [80, 46], [0])] },
+    { id: 'Kl', count: 1, f: [C('N', [50, 12]), R('W1 S1', [34, 66], { inn: [64, 64] }), F('S2 W0', [12, 88]), F('W2 E S0', [76, 42], [0])] },
+    { id: 'Km', count: 1, f: [C('N W', [26, 26], { shield: 1 }), R('E1 S1', [69, 69], { inn: [64, 47] }), F('S0 E2', [89, 89]), F('S2 E0', [82, 34], [0])] },
+    { id: 'Kn', count: 1, f: [R('E1', [82, 50], { inn: [78, 28] }), R('W1', [18, 50]), R('S1', [50, 82]),
+      F('W2 N E0', [40, 22]), F('W0 S2', [16, 84]), F('E2 S0', [84, 84])] },
+    { id: 'Ko', count: 1, f: [R('W1 E1', [30, 50], { inn: [64, 28] }), F('W2 N E0', [30, 20]), F('E2 S W0', [50, 80])] },
+    { id: 'Kp', count: 1, f: [R('W1 S1', [31, 69], { inn: [70, 34] }), F('W2 N E S0', [50, 22]), F('S2 W0', [12, 88])] },
+    { id: 'Kq', count: 1, f: [R('N1 W1', [31, 31]), R('S1 E1', [69, 69]), F('N0 W2', [11, 11]), F('S0 E2', [89, 89]), F('N2 E0 S2 W0', [74, 26])] },
+  ];
+  IC.forEach((d) => { d.set = 'ic'; });
+
+  const ALL = BASE.concat(RIVER, IC);
   const START_ID = 'D';
 
   function rotPt([x, y], r) { for (let i = 0; i < r; i++) [x, y] = [100 - y, x]; return [x, y]; }
 
   // Build TYPES[i] = { id, count, feats (base orientation), rot[r] = {portFeat[12], side[4], feats} }
-  const TYPES = BASE.map((def, idx) => {
+  const TYPES = ALL.map((def, idx) => {
     const feats = def.f.map((f) => ({
       type: f.type, ports: ports(f.p), spot: f.spot, adj: f.adj || [], shield: f.shield || 0,
+      inn: f.inn || null, cathedral: f.cathedral || 0, end: f.end || null,
     }));
     const rot = [];
     for (let r = 0; r < 4; r++) {
@@ -79,30 +132,42 @@
         const ps = f.ports.map((p) => (p + 3 * r) % 12);
         ps.forEach((p) => { if (portFeat[p] !== -1) throw new Error(def.id + ' port used twice'); portFeat[p] = fi; });
         const sides = f.type === 'city' ? [...new Set(ps.map((p) => Math.floor(p / 3)))]
-          : f.type === 'road' ? ps.filter((p) => p % 3 === 1).map((p) => (p - 1) / 3) : [];
-        return { type: f.type, ports: ps, sides, shield: f.shield, adj: f.adj, spot: rotPt(f.spot, r) };
+          : f.type === 'road' || f.type === 'river' ? ps.filter((p) => p % 3 === 1).map((p) => (p - 1) / 3) : [];
+        return { type: f.type, ports: ps, sides, shield: f.shield, adj: f.adj, spot: rotPt(f.spot, r), inn: !!f.inn, cathedral: f.cathedral };
       });
       if (portFeat.includes(-1)) throw new Error(def.id + ' has an uncovered port');
-      const side = [0, 1, 2, 3].map((s) => rf[portFeat[3 * s + 1]].type === 'city' ? 'C'
-        : rf[portFeat[3 * s + 1]].type === 'road' ? 'R' : 'F');
+      const side = [0, 1, 2, 3].map((s) => ({ city: 'C', road: 'R', river: 'I' }[rf[portFeat[3 * s + 1]].type] || 'F'));
       rot.push({ portFeat, side, feats: rf, sig: side.join('') });
     }
-    return { idx, id: def.id, count: def.count, feats, rot };
+    const river = feats.some((f) => f.type === 'river');
+    return { idx, id: def.id, set: def.set, count: def.count, feats, rot, river, spring: !!def.spring, lake: !!def.lake, village: !!def.village, hedge: def.hedge || null };
   });
 
   const START = TYPES.findIndex((t) => t.id === START_ID);
   const byId = {}; TYPES.forEach((t) => { byId[t.id] = t.idx; });
 
-  // The bag the players draw from: every tile except the start tile.
-  function bagCounts() { return TYPES.map((t) => t.count - (t.idx === START ? 1 : 0)); }
+  const SPRING = TYPES.findIndex((t) => t.spring), LAKE = TYPES.findIndex((t) => t.lake);
 
-  // Which tile types can fill a hole with these side requirements?
-  // need[s] is 'C' | 'R' | 'F' | null (any). Returns type indexes.
-  function typesFitting(need) {
-    return TYPES.filter((t) => t.rot.some((R) => need.every((n, s) => !n || R.side[s] === n))).map((t) => t.idx);
+  // The land tiles shuffled into the main bag. Base game: every base tile but
+  // the start tile. o.ic adds Inns & Cathedrals. o.river: the start tile goes
+  // into the bag too (the spring starts the game; River rules), and the river
+  // tiles are handled by the engine as their own stack.
+  function bagCounts(o) {
+    o = o || {};
+    return TYPES.map((t) => {
+      if (t.set === 'base') return t.count - (t.idx === START && !o.river ? 1 : 0);
+      if (t.set === 'ic') return o.ic ? t.count : 0;
+      return 0;
+    });
   }
 
-  const api = { TYPES, START, byId, bagCounts, typesFitting, rotPt, TOTAL: 72 };
+  // Which tile types can fill a hole with these side requirements?
+  // need[s] is 'C' | 'R' | 'F' | null (any). Returns type indexes (base set).
+  function typesFitting(need) {
+    return TYPES.filter((t) => t.set === 'base' && t.rot.some((R) => need.every((n, s) => !n || R.side[s] === n))).map((t) => t.idx);
+  }
+
+  const api = { TYPES, START, SPRING, LAKE, byId, bagCounts, typesFitting, rotPt, TOTAL: 72 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else (typeof self !== 'undefined' ? self : window).CarcTiles = api;
 })();

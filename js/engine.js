@@ -6,7 +6,11 @@
  *   legalPlacements(state)   -> [{x,y,r}] for the tile in hand
  *   meepleSpots(state,x,y,r) -> feature indexes a meeple may go on
  *
- * Action: { type:'place', x, y, r, fi }   fi = feature index for a meeple, -1 = none.
+ * Action: { type:'place', x, y, r, fi, big }   fi = feature index for a meeple,
+ * -1 = none; big = use the large meeple (Inns & Cathedrals, counts as 2).
+ *
+ * Options: river (The River: spring start, river tiles first, lake last, no
+ * U-turns) and ic (Inns & Cathedrals: 18 tiles, inns, cathedrals, large meeple).
  *
  * Features are joined with a union-find over "groups". Each group keeps what
  * scoring needs: tiles, open edges, shields, meeples, adjacent cities (fields).
@@ -30,24 +34,38 @@
     };
   }
 
-  // Variants: farmers off; old 2-tile city (2 points); first-edition farms.
-  const DEFAULT_OPTS = { players: 2, farmers: true, smallCity: 4, farm: '3rd', seed: 1 };
+  // Variants: farmers off; old 2-tile city (2 points); first-edition farms;
+  // The River; Inns & Cathedrals.
+  const DEFAULT_OPTS = { players: 2, farmers: true, smallCity: 4, farm: '3rd', river: false, ic: false, seed: 1 };
+  const isRiver = (t) => TYPES[t].river;
 
   function newGame(o) {
     const opts = Object.assign({}, DEFAULT_OPTS, o || {});
     const n = opts.players;
-    const counts = T.bagCounts();
-    const bag = [];
+    const counts = T.bagCounts(opts);
+    let bag = [];
     counts.forEach((c, t) => { for (let i = 0; i < c; i++) bag.push(t); });
     const rand = rng(opts.seed);
-    for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+    const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    shuffle(bag);
+    if (opts.river) {
+      // Drawn from the end: the ten river tiles first (shuffled), then the lake.
+      const rv = [];
+      TYPES.forEach((t) => { if (t.set === 'river' && !t.spring && !t.lake) for (let i = 0; i < t.count; i++) rv.push(t.idx); });
+      bag = bag.concat([T.LAKE], shuffle(rv));
+    }
     const st = {
       v: 1, opts, n, board: {}, groups: [], bag, cur: -1, turn: 0, moves: 0,
       scores: new Array(n).fill(0), meeples: new Array(n).fill(MEEPLES),
+      big: new Array(n).fill(opts.ic ? 1 : 0),
       bd: Array.from({ length: n }, () => ({ city: 0, road: 0, cloister: 0, farm: 0 })),
-      discards: [], last: null, over: false, final: null,
+      discards: [], last: null, over: false, final: null, river: null,
     };
-    putTile(st, 0, 0, T.START, 0, -1, -1);
+    if (opts.river) {
+      putTile(st, 0, 0, T.SPRING, 0, -1, -1);
+      // The river's open end: the square east of the spring, entered from its west side.
+      st.river = { x: 1, y: 0, from: 3, turn: 0 };
+    } else putTile(st, 0, 0, T.START, 0, -1, -1);
     draw(st);
     return st;
   }
@@ -66,6 +84,8 @@
     B.par = a;
     for (const k of B.tiles) if (!A.tiles.includes(k)) A.tiles.push(k);
     A.open += B.open; A.sh += B.sh;
+    if (B.inn) A.inn = 1;
+    if (B.cat) A.cat = 1;
     for (let i = 0; i < A.m.length; i++) A.m[i] += B.m[i];
     A.mk.push(...B.mk);
     for (const c of B.cities) if (!A.cities.includes(c)) A.cities.push(c);
@@ -86,6 +106,28 @@
     return touches;
   }
 
+  // The River: a river tile must continue the river at its open end, its far
+  // end must lead to an empty square, and two curves in a row may not turn the
+  // same way (that would be a U-turn). Other tiles: the normal rule.
+  function riverMove(st, t, r) {
+    const R = TYPES[t].rot[r], rv = st.river;
+    const f = R.feats.find((q) => q.type === 'river');
+    if (!f.sides.includes(rv.from)) return null;
+    const out = f.sides.find((sd) => sd !== rv.from);
+    if (out === undefined) return { out: -1, turn: 0 };          // the lake
+    const heading = (rv.from + 2) % 4;
+    const turn = out === heading ? 0 : out === (heading + 1) % 4 ? 1 : -1;   // 1 right, -1 left
+    if (turn && turn === rv.turn) return null;
+    if (st.board[K(rv.x + DX[out], rv.y + DY[out])]) return null;
+    return { out, turn };
+  }
+  function canPlace(st, x, y, t, r) {
+    if (!fits(st, x, y, t, r)) return false;
+    if (!isRiver(t)) return true;
+    if (!st.river || x !== st.river.x || y !== st.river.y) return false;
+    return !!riverMove(st, t, r);
+  }
+
   function frontier(st) {
     const seen = {}, out = [];
     for (const k in st.board) {
@@ -100,6 +142,11 @@
 
   function legalFor(st, t) {
     const out = [];
+    if (isRiver(t)) {
+      if (!st.river) return out;
+      for (let r = 0; r < 4; r++) if (canPlace(st, st.river.x, st.river.y, t, r)) out.push({ x: st.river.x, y: st.river.y, r });
+      return out;
+    }
     for (const [x, y] of frontier(st)) for (let r = 0; r < 4; r++) if (fits(st, x, y, t, r)) out.push({ x, y, r });
     return out;
   }
@@ -133,7 +180,7 @@
       const c = cf(i);
       let C = comps.find((q) => q.root === c);
       if (!C) {
-        C = { root: c, fis: [], type: R.feats[i].type, roots: [], tiles: 1, open: 0, sh: 0, m: new Array(st.n).fill(0), cities: [], cityFis: [] };
+        C = { root: c, fis: [], type: R.feats[i].type, roots: [], tiles: 1, open: 0, sh: 0, inn: 0, cat: 0, m: new Array(st.n).fill(0), cities: [], cityFis: [] };
         comps.push(C);
       }
       featComp[i] = comps.indexOf(C);
@@ -141,11 +188,15 @@
       const f = R.feats[i];
       C.open += f.sides.length - 2 * conn[i];
       C.sh += f.shield;
+      if (f.inn) C.inn = 1;
+      if (f.cathedral) C.cat = 1;
       if (f.type === 'field') for (const a of f.adj) if (!C.cityFis.includes(a)) C.cityFis.push(a);
       for (const g of links[i]) if (!C.roots.includes(g)) {
         C.roots.push(g);
         const G = st.groups[g];
         C.tiles += G.tiles.length; C.open += G.open; C.sh += G.sh;
+        if (G.inn) C.inn = 1;
+        if (G.cat) C.cat = 1;
         for (let p = 0; p < st.n; p++) C.m[p] += G.m[p];
         for (const c of G.cities) { const rc = find(st, c); if (!C.cities.includes(rc)) C.cities.push(rc); }
       }
@@ -153,12 +204,15 @@
     return { comps, featComp };
   }
 
+  // Has player p a meeple to place (big = the large one)?
+  function hasMeeple(st, p, big) { return big ? (st.big ? st.big[p] : 0) > 0 : st.meeples[p] > 0; }
   function meepleSpotsFor(st, x, y, t, r, p) {
-    if (st.meeples[p] <= 0) return [];
+    if (!hasMeeple(st, p, false) && !hasMeeple(st, p, true)) return [];
     const R = TYPES[t].rot[r];
     const A = analyze(st, x, y, t, r);
     const out = [];
     R.feats.forEach((f, fi) => {
+      if (f.type === 'river') return;
       if (f.type === 'field' && !st.opts.farmers) return;
       const C = A.comps[A.featComp[fi]];
       if (C.m.every((v) => v === 0)) out.push(fi);
@@ -168,7 +222,7 @@
   function meepleSpots(st, x, y, r) { return st.cur < 0 ? [] : meepleSpotsFor(st, x, y, st.cur, r, st.turn); }
 
   // Put a tile down and join its features to the neighbours. p/fi: meeple.
-  function putTile(st, x, y, t, r, p, fi) {
+  function putTile(st, x, y, t, r, p, fi, big) {
     const key = K(x, y), R = TYPES[t].rot[r];
     const tile = { t, r, g: [], m: null };
     st.board[key] = tile;
@@ -178,6 +232,8 @@
         type: f.type, par: id, tiles: f.type === 'city' || f.type === 'road' ? [key] : [],
         open: f.sides.length, sh: f.shield, m: new Array(st.n).fill(0), mk: [], cities: [], done: 0, key,
       });
+      if (f.inn) st.groups[id].inn = 1;
+      if (f.cathedral) st.groups[id].cat = 1;
       tile.g.push(id);
     });
     R.feats.forEach((f, fi2) => { if (f.type === 'field') st.groups[tile.g[fi2]].cities = f.adj.map((a) => tile.g[a]); });
@@ -193,9 +249,9 @@
     }
     if (fi >= 0) {
       const g = st.groups[find(st, tile.g[fi])];
-      g.m[p]++; g.mk.push(key);
-      tile.m = [p, fi];
-      st.meeples[p]--;
+      g.m[p] += big ? 2 : 1; g.mk.push(key);
+      tile.m = big ? [p, fi, 1] : [p, fi];
+      if (big) st.big[p]--; else st.meeples[p]--;
     }
     return tile;
   }
@@ -208,10 +264,17 @@
     return w;
   }
 
-  function cityPoints(st, tiles, sh, complete) {
+  // cat: the city has a cathedral (3 per tile and shield when finished, 0 if not).
+  function cityPoints(st, tiles, sh, complete, cat) {
+    if (cat) return complete ? 3 * tiles + 3 * sh : 0;
     if (!complete) return tiles + sh;
     if (tiles === 2 && st.opts.smallCity === 2) return 2 + 2 * sh;
     return 2 * tiles + 2 * sh;
+  }
+  // inn: the road has an inn (2 per tile when finished, 0 if not).
+  function roadPoints(tiles, complete, inn) {
+    if (inn) return complete ? 2 * tiles : 0;
+    return tiles;
   }
 
   function award(st, who, pts, kind, ev, where) {
@@ -222,7 +285,7 @@
   function returnMeeples(st, g) {
     for (const k of g.mk) {
       const tl = st.board[k];
-      if (tl && tl.m) { st.meeples[tl.m[0]]++; tl.m = null; }
+      if (tl && tl.m) { if (tl.m[2]) st.big[tl.m[0]]++; else st.meeples[tl.m[0]]++; tl.m = null; }
     }
     g.mk = []; g.m = g.m.map(() => 0);
   }
@@ -242,7 +305,7 @@
       const gid = find(st, tile.g[fi]), g = st.groups[gid];
       if (g.done || g.open !== 0) return;
       g.done = 1;
-      const pts = f.type === 'city' ? cityPoints(st, g.tiles.length, g.sh, true) : g.tiles.length;
+      const pts = f.type === 'city' ? cityPoints(st, g.tiles.length, g.sh, true, g.cat) : roadPoints(g.tiles.length, true, g.inn);
       award(st, winners(g.m), pts, f.type, ev, g.tiles.slice());
       returnMeeples(st, g);
     });
@@ -286,8 +349,8 @@
       if (g.done || g.type === 'field') continue;
       const w = winners(g.m);
       if (!w.length) continue;
-      if (g.type === 'city') award(st, w, cityPoints(st, g.tiles.length, g.sh, false), 'city', ev, g.tiles.slice());
-      else if (g.type === 'road') award(st, w, g.tiles.length, 'road', ev, g.tiles.slice());
+      if (g.type === 'city') award(st, w, cityPoints(st, g.tiles.length, g.sh, false, g.cat), 'city', ev, g.tiles.slice());
+      else if (g.type === 'road') award(st, w, roadPoints(g.tiles.length, false, g.inn), 'road', ev, g.tiles.slice());
       else if (g.type === 'cloister') {
         const [cx, cy] = g.key.split(',').map(Number);
         award(st, w, 1 + cloisterNeighbours(st, cx, cy), 'cloister', ev, [g.key]);
@@ -326,14 +389,17 @@
   function applyMut(st, a) {
     if (st.over) throw new Error('game over');
     if (!a || a.type !== 'place') throw new Error('unknown action');
-    const { x, y, r } = a, fi = a.fi == null ? -1 : a.fi;
-    if (!fits(st, x, y, st.cur, r)) throw new Error('tile does not fit there');
+    const { x, y, r } = a, fi = a.fi == null ? -1 : a.fi, big = fi >= 0 && !!a.big;
+    if (!canPlace(st, x, y, st.cur, r)) throw new Error('tile does not fit there');
     if (fi >= 0 && !meepleSpotsFor(st, x, y, st.cur, r, st.turn).includes(fi)) throw new Error('meeple not allowed there');
+    if (fi >= 0 && !hasMeeple(st, st.turn, big)) throw new Error('no meeple of that size left');
     const p = st.turn, t = st.cur;
-    putTile(st, x, y, t, r, p, fi);
+    const rm = isRiver(t) ? riverMove(st, t, r) : null;
+    putTile(st, x, y, t, r, p, fi, big);
+    if (rm) st.river = rm.out < 0 ? null : { x: x + DX[rm.out], y: y + DY[rm.out], from: (rm.out + 2) % 4, turn: rm.turn };
     const ev = [];
     scoreCompleted(st, x, y, ev);
-    st.last = { x, y, t, r, p, fi, ev };
+    st.last = { x, y, t, r, p, fi, big, ev };
     st.moves++;
     st.turn = (st.turn + 1) % st.n;
     draw(st);
@@ -359,8 +425,8 @@
   }
 
   const api = {
-    newGame, apply, applyMut, view, clone, legalPlacements, legalFor, meepleSpots, meepleSpotsFor,
-    analyze, fits, find, _put: putTile, winners, cityPoints, cloisterNeighbours, bagLeft, frontier, rng, K, DX, DY, MEEPLES,
+    newGame, apply, applyMut, view, clone, legalPlacements, legalFor, meepleSpots, meepleSpotsFor, hasMeeple,
+    analyze, fits, canPlace, find, _put: putTile, winners, cityPoints, roadPoints, cloisterNeighbours, bagLeft, frontier, rng, K, DX, DY, MEEPLES,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else self.CarcEngine = api;

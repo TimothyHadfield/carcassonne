@@ -3,7 +3,7 @@
  *
  * Nothing in Carcassonne is secret except the order of the bag, so the public
  * view is the whole state with the bag sorted, and the private view is empty.
- * options: { farmers, farm, smallCity, levels: ['hard', ...] per seat }.
+ * options: { farmers, farm, smallCity, river, ic, levels: ['hard', ...] per seat }.
  */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
   const game = {
     id: 'carcassonne',
     minSeats: 2,
-    maxSeats: 5,
+    maxSeats: 6,
     setup(n, options, rng, seats) {
       const o = options || {};
       const st = E.newGame({
@@ -22,6 +22,8 @@
         farmers: o.farmers !== false,
         farm: o.farm === '1st' ? '1st' : '3rd',
         smallCity: o.smallCity === 2 ? 2 : 4,
+        river: !!o.river,
+        ic: !!o.ic && n <= 6,
         seed: Math.floor((rng || Math.random)() * 2 ** 31),
       });
       st.opts.levels = Array.from({ length: n }, (_, i) => (o.levels && o.levels[i]) || 'hard');

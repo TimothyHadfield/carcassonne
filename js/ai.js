@@ -40,15 +40,19 @@
     const pc = Math.max(0, 1 - miss * 0.085) * Math.min(1, left / (miss * 3));
     return pc * 9 + (1 - pc) * (1 + nb);
   }
-  function featureEV(st, L, type, tiles, sh, open, left) {
+  // special: the road has an inn / the city a cathedral (Inns & Cathedrals):
+  // worth more when finished, nothing when not.
+  function featureEV(st, L, type, tiles, sh, open, left, special) {
     if (type === 'road') {
-      if (!open) return tiles;
+      const per = special ? 2 : 1;
+      if (!open) return per * tiles;
       const pc = pComplete(L, 'road', open, left);
-      return pc * (tiles + 0.6 * open) + (1 - pc) * tiles;
+      return pc * per * (tiles + 0.6 * open) + (1 - pc) * (special ? 0 : tiles);
     }
-    if (!open) return E.cityPoints(st, tiles, sh, true);
+    if (!open) return E.cityPoints(st, tiles, sh, true, special);
     const pc = pComplete(L, 'city', open, left);
-    return pc * (2 * (tiles + 0.6 * open) + 2 * sh) + (1 - pc) * (tiles + sh);
+    const per = special ? 3 : 2;
+    return pc * (per * (tiles + 0.6 * open) + per * sh) + (1 - pc) * (special ? 0 : tiles + sh);
   }
   // What a group is worth to p: own share minus (a weight of) the others' share.
   function rel(st, L, p, m, ev) {
@@ -75,7 +79,7 @@
 
   // Value of placing the tile in hand at (x,y,r) with a meeple on fi (-1 none),
   // from player p's point of view. A = E.analyze(...) can be passed in to reuse.
-  function evaluate(st, p, x, y, r, fi, level, A) {
+  function evaluate(st, p, x, y, r, fi, level, A, big) {
     const L = LEVELS[level || 'hard'];
     const t = st.cur, R = TYPES[t].rot[r];
     A = A || E.analyze(st, x, y, t, r);
@@ -83,17 +87,17 @@
     let v = 0;
     A.comps.forEach((C, ci) => {
       const mine = fi >= 0 && C.fis.includes(fi);
-      const m = C.m.slice(); if (mine) m[p]++;
+      const m = C.m.slice(); if (mine) m[p] += big ? 2 : 1;
       if (C.type === 'city' || C.type === 'road') {
         let before = 0;
         for (const g of C.roots) {
           const G = st.groups[g];
-          before += rel(st, L, p, G.m, featureEV(st, L, C.type, G.tiles.length, G.sh, G.open, left));
+          before += rel(st, L, p, G.m, featureEV(st, L, C.type, G.tiles.length, G.sh, G.open, left, G.inn || G.cat));
         }
-        const after = rel(st, L, p, m, featureEV(st, L, C.type, C.tiles, C.sh, C.open, left - 1));
+        const after = rel(st, L, p, m, featureEV(st, L, C.type, C.tiles, C.sh, C.open, left - 1, C.inn || C.cat));
         v += after - before;
         if (C.open === 0) {           // finished now: meeples come straight back
-          const back = m[p];
+          const back = C.m[p] + (mine ? 1 : 0);   // meeples (not strength) coming home
           v += back * meepleCost(st, L, p, left) * 0.5;
           if (mine) v += meepleCost(st, L, p, left);   // cancels the cost charged below
         }
@@ -113,7 +117,7 @@
         v += cloisterEV(E.cloisterNeighbours(st, x, y), left - 1);
       }
     });
-    if (fi >= 0) v -= meepleCost(st, L, p, left);
+    if (fi >= 0) v -= meepleCost(st, L, p, left) * (big ? 1.3 : 1);
     // Neighbouring monasteries gain a tile.
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
       if (!dx && !dy) continue;
@@ -136,8 +140,11 @@
     for (const pl of E.legalPlacements(st)) {
       const A = E.analyze(st, pl.x, pl.y, st.cur, pl.r);
       const spots = E.meepleSpotsFor(st, pl.x, pl.y, st.cur, pl.r, p);
-      for (const fi of [-1].concat(spots)) {
-        out.push({ x: pl.x, y: pl.y, r: pl.r, fi, v: evaluate(st, p, pl.x, pl.y, pl.r, fi, level, A) });
+      const small = E.hasMeeple(st, p, false), large = E.hasMeeple(st, p, true);
+      out.push({ x: pl.x, y: pl.y, r: pl.r, fi: -1, v: evaluate(st, p, pl.x, pl.y, pl.r, -1, level, A) });
+      for (const fi of spots) {
+        if (small) out.push({ x: pl.x, y: pl.y, r: pl.r, fi, v: evaluate(st, p, pl.x, pl.y, pl.r, fi, level, A) });
+        if (large) out.push({ x: pl.x, y: pl.y, r: pl.r, fi, big: true, v: evaluate(st, p, pl.x, pl.y, pl.r, fi, level, A, true) });
       }
     }
     out.sort((a, b) => b.v - a.v);
@@ -150,7 +157,7 @@
     if (level === 'easy' && rand() < EASY_SKILL) {
       const ranked = rankMoves(st, p, 'medium');
       const m = ranked[0];
-      return { type: 'place', x: m.x, y: m.y, r: m.r, fi: m.fi };
+      return { type: 'place', x: m.x, y: m.y, r: m.r, fi: m.fi, big: !!m.big };
     }
     if (level === 'easy' || level === 'random') {
       const L = E.legalPlacements(st);
@@ -158,13 +165,13 @@
       const spots = E.meepleSpotsFor(st, m.x, m.y, st.cur, m.r, p)
         .filter((fi) => TYPES[st.cur].rot[m.r].feats[fi].type !== 'field');
       const fi = spots.length && rand() < 0.5 ? spots[Math.floor(rand() * spots.length)] : -1;
-      return { type: 'place', x: m.x, y: m.y, r: m.r, fi };
+      return { type: 'place', x: m.x, y: m.y, r: m.r, fi, big: fi >= 0 && !E.hasMeeple(st, p, false) };
     }
     const ranked = rankMoves(st, p, level);
     // Break exact ties at random so games differ.
     const top = ranked.filter((m) => m.v >= ranked[0].v - 1e-9);
     const m = top[Math.floor(rand() * top.length)];
-    return { type: 'place', x: m.x, y: m.y, r: m.r, fi: m.fi };
+    return { type: 'place', x: m.x, y: m.y, r: m.r, fi: m.fi, big: !!m.big };
   }
 
   const api = { evaluate, rankMoves, choose, LEVELS };

@@ -10,11 +10,12 @@ function play(st, L, x, y, r, fi) { st.cur = id(L); return E.applyMut(st, { type
 function fresh(o) { const st = E.newGame(Object.assign({ players: 2, seed: 7 }, o)); return st; }
 
 // ---- tile set ----
-const total = T.TYPES.reduce((a, t) => a + t.count, 0);
+const BASE = T.TYPES.filter((t) => t.set === 'base');
+const total = BASE.reduce((a, t) => a + t.count, 0);
 eq(total, 72, '72 tiles in the base game');
 eq(T.bagCounts().reduce((a, b) => a + b, 0), 71, '71 tiles in the bag (start tile set aside)');
-eq(T.TYPES.reduce((a, t) => a + t.count * t.feats.filter((f) => f.shield).length, 0), 10, '10 shields');
-eq(T.TYPES.reduce((a, t) => a + t.count * t.feats.filter((f) => f.type === 'cloister').length, 0), 6, '6 monasteries');
+eq(BASE.reduce((a, t) => a + t.count * t.feats.filter((f) => f.shield).length, 0), 10, '10 shields');
+eq(BASE.reduce((a, t) => a + t.count * t.feats.filter((f) => f.type === 'cloister').length, 0), 6, '6 monasteries');
 const expect = { A: 2, B: 4, C: 1, D: 4, E: 5, F: 2, G: 1, H: 3, I: 2, J: 3, K: 3, L: 3, M: 2, N: 3, O: 2, P: 3, Q: 1, R: 3, S: 2, T: 1, U: 8, V: 9, W: 4, X: 1 };
 for (const L in expect) eq(T.TYPES[id(L)].count, expect[L], 'count of tile ' + L);
 eq(T.TYPES[T.START].id, 'D', 'start tile is D (city top, straight road)');
@@ -24,7 +25,7 @@ eq(T.TYPES[id('K')].rot[0].sig, 'CFRR', 'K: city N, road S-W');
 eq(T.TYPES[id('V')].rot[1].sig, 'RFFR', 'V rotated once: road W-N');
 // Edge count totals across the full set (sum over tiles of city/road sides):
 let citySides = 0, roadSides = 0;
-for (const t of T.TYPES) for (const s of t.rot[0].side) { if (s === 'C') citySides += t.count; if (s === 'R') roadSides += t.count; }
+for (const t of BASE) for (const s of t.rot[0].side) { if (s === 'C') citySides += t.count; if (s === 'R') roadSides += t.count; }
 eq(citySides, 79, 'city edges across the set (hand-counted from the tile list)');
 eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)');
 
@@ -134,11 +135,100 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
   eq(st.bd[0].city, 3, 'unfinished 2-tile city with a shield = 3');
 }
 
+// ---- The River ----
+const sets = (name) => T.TYPES.filter((t) => t.set === name);
+eq(sets('river').reduce((a, t) => a + t.count, 0), 12, 'River: 12 tiles');
+eq(sets('river').filter((t) => t.spring || t.lake).length, 2, 'River: one spring, one lake');
+eq(sets('river').map((t) => t.id + t.count).join(' '), 'RS1 RL1 RA1 RB1 RC1 RD1 RE2 RF1 RG1 RH2', 'River: tile mix (JCloisterZone river/1:1 + Annotated Rules p.30)');
+{
+  const st = fresh({ river: true });
+  eq(st.board['0,0'].t, T.SPRING, 'River: the spring starts the game');
+  ok(T.TYPES[st.cur].river, 'River: river tiles are drawn first');
+  ok(E.legalPlacements(st).every((m) => m.x === 1 && m.y === 0), 'River: must continue the river at its open end');
+  eq(T.bagCounts({ river: true })[T.START], 4, 'River: the base start tile goes into the bag');
+  // U-turn: a right-hand curve, then another right-hand curve is not allowed.
+  st.cur = id('RH');
+  E.applyMut(st, { type: 'place', x: 1, y: 0, r: 0, fi: -1 });   // W->S: turns right
+  eq([st.river.x, st.river.y, st.river.turn], [1, 1, 1], 'River: open end moves on, turn remembered');
+  ok(!E.canPlace(st, 1, 1, id('RH'), 1), 'River: second right turn in a row (U-turn) refused');
+  ok(E.canPlace(st, 1, 1, id('RH'), 2), 'River: turning back left is fine');
+  ok(!E.canPlace(st, 0, 1, id('RE'), 0), 'River: cannot place a river tile away from the open end');
+}
+{
+  // Whole river laid first, lake last, in every game.
+  let bad = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    const st = E.newGame({ players: 2, river: true, seed });
+    const rand = E.rng(seed);
+    const order = [];
+    while (!st.over) {
+      const L = E.legalPlacements(st), m = L[Math.floor(rand() * L.length)];
+      order.push(st.cur);
+      E.applyMut(st, { type: 'place', x: m.x, y: m.y, r: m.r, fi: -1 });
+    }
+    const firstLand = order.findIndex((t) => !T.TYPES[t].river);
+    if (order.slice(firstLand).some((t) => T.TYPES[t].river)) bad++;
+    if (order[firstLand - 1] !== T.LAKE && !st.discards.includes(T.LAKE)) bad++;
+  }
+  eq(bad, 0, 'River: river tiles all come before land tiles, lake last');
+}
+
+// ---- Inns & Cathedrals ----
+eq(sets('ic').reduce((a, t) => a + t.count, 0), 18, 'I&C: 18 tiles');
+eq(sets('ic').reduce((a, t) => a + t.count * t.feats.filter((f) => f.inn).length, 0), 6, 'I&C: 6 inns');
+eq(sets('ic').reduce((a, t) => a + t.count * t.feats.filter((f) => f.cathedral).length, 0), 2, 'I&C: 2 cathedrals');
+{
+  // Inn on a finished road: 2 per tile. Road (-1,0)..(2,0) = 4 tiles = 8.
+  const st = fresh({ ic: true });
+  play(st, 'Ko', 1, 0, 0, 0);                    // P0: inn road joins the start road, meeple on it
+  play(st, 'A', 2, 0, 1, -1);                    // P1: monastery ends the road in the east
+  play(st, 'A', -1, 0, 3, -1);                   // P0: ends it in the west
+  eq(st.scores[0], 8, 'I&C: finished road with an inn = 2 x 4 tiles');
+  const s2 = fresh({ ic: true });
+  play(s2, 'Ko', 1, 0, 0, 0);
+  s2.bag = [];
+  play(s2, 'U', 0, 1, 1, -1);
+  eq(s2.bd[0].road, 0, 'I&C: unfinished road with an inn scores 0');
+}
+{
+  // Cathedral: start city + cathedral + 3 caps = 5 tiles x 3 = 15.
+  const st = fresh({ ic: true });
+  play(st, 'Ka', 0, -1, 0, 0);                   // P0: cathedral joins the start city, meeple on it
+  play(st, 'E', 0, -2, 2, -1);
+  play(st, 'E', 1, -1, 3, -1);
+  eq(st.scores[0], 0, 'I&C: not finished yet');
+  play(st, 'E', -1, -1, 1, -1);
+  eq(st.scores[0], 15, 'I&C: finished cathedral city = 3 x 5 tiles');
+  const s2 = fresh({ ic: true });
+  play(s2, 'Ka', 0, -1, 0, 0);
+  s2.bag = [];
+  play(s2, 'U', 0, 1, 1, -1);
+  eq(s2.bd[0].city, 0, 'I&C: unfinished cathedral city scores 0');
+}
+{
+  // Large meeple counts as two: P0 (large) beats P1 (one normal) on a joined road.
+  const st = fresh({ ic: true });
+  eq(st.big, [1, 1], 'I&C: one large meeple each');
+  st.cur = id('U'); E.applyMut(st, { type: 'place', x: 1, y: 0, r: 1, fi: 0, big: true });
+  eq([st.big[0], st.meeples[0]], [0, 7], 'I&C: the large meeple left the supply, not a normal one');
+  E._put(st, -2, 0, id('U'), 1, 1, 0);           // P1: separate road with a normal meeple
+  play(st, 'U', -1, 0, 1, -1);                   // joins both roads
+  play(st, 'A', 2, 0, 1, -1);
+  play(st, 'A', -3, 0, 3, -1);                   // 6-tile road finished
+  eq(st.scores, [6, 0], 'I&C: large meeple (2) beats one meeple (1)');
+  eq([st.big[0], st.meeples[1]], [1, 7], 'I&C: both come home');
+  let threw = false;
+  const s3 = fresh({ ic: true }); s3.big[0] = 0;
+  s3.cur = id('U'); try { E.applyMut(s3, { type: 'place', x: 1, y: 0, r: 1, fi: 0, big: true }); } catch (e) { threw = true; }
+  ok(threw, 'I&C: no second large meeple');
+}
+
 // ---- random full games: invariants + the look-ahead agrees with the real move ----
 {
   let games = 0, moves = 0, mismatch = 0, conserve = 0, sumOk = 0, legalOk = 0;
   for (let seed = 1; seed <= 60; seed++) {
-    let st = E.newGame({ players: 2 + (seed % 4), seed });
+    const opts = { players: 2 + (seed % 4), seed, river: seed % 4 === 1 || seed % 4 === 3, ic: seed % 4 >= 2 };
+    let st = E.newGame(opts);
     const rand = E.rng(seed * 31);
     while (!st.over) {
       const L = E.legalPlacements(st);
@@ -146,8 +236,9 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
       const m = L[Math.floor(rand() * L.length)];
       const spots = E.meepleSpots(st, m.x, m.y, m.r);
       const fi = spots.length && rand() < 0.5 ? spots[Math.floor(rand() * spots.length)] : -1;
+      const big = fi >= 0 && (!E.hasMeeple(st, st.turn, false) || (E.hasMeeple(st, st.turn, true) && rand() < 0.3));
       const A = E.analyze(st, m.x, m.y, st.cur, m.r);
-      const nst = E.apply(st, { type: 'place', x: m.x, y: m.y, r: m.r, fi });
+      const nst = E.apply(st, { type: 'place', x: m.x, y: m.y, r: m.r, fi, big });
       // every city/road feature: predicted open edges == real open edges after joining
       const tile = nst.board[E.K(m.x, m.y)];
       A.comps.forEach((C) => {
@@ -157,13 +248,14 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
         if (C.fis.some((f) => E.find(nst, tile.g[f]) !== E.find(nst, tile.g[C.fis[0]]))) mismatch++;
       });
       st = nst; moves++;
-      let onBoard = new Array(st.n).fill(0);
-      for (const k in st.board) if (st.board[k].m) onBoard[st.board[k].m[0]]++;
+      const onBoard = new Array(st.n).fill(0), bigOn = new Array(st.n).fill(0);
+      for (const k in st.board) { const tm = st.board[k].m; if (tm) (tm[2] ? bigOn : onBoard)[tm[0]]++; }
       if (onBoard.some((v, p) => v + st.meeples[p] !== 7)) conserve++;
+      if (bigOn.some((v, p) => v + st.big[p] !== (opts.ic ? 1 : 0))) conserve++;
     }
     const bdSum = st.bd.map((b) => b.city + b.road + b.cloister + b.farm);
     if (JSON.stringify(bdSum) === JSON.stringify(st.scores)) sumOk++;
-    eq(Object.keys(st.board).length + st.discards.length, 72, 'every tile used or set aside (seed ' + seed + ')');
+    eq(Object.keys(st.board).length + st.discards.length, 72 + (opts.river ? 12 : 0) + (opts.ic ? 18 : 0), 'every tile used or set aside (seed ' + seed + ')');
     games++;
   }
   eq(mismatch, 0, 'look-ahead matches the real placement in ' + moves + ' moves');
