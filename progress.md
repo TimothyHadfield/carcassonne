@@ -1,7 +1,7 @@
 # Carcassonne — progress
 
 ## START HERE
-Last updated: 2026-10-19. Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
+Last updated: 2026-10-20 (visual design pass). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
 
 ## Goal right now
 Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, online rooms, and a real-table companion. Waiting on Tim's feedback.
@@ -16,6 +16,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 | Placement hints (expected points on each lit square), study mode | done |
 | Companion: Tiles tab (tiles left, odds a hole gets filled before the bag runs out), Scores tab (score tracker incl. farms) | done |
 | Online rooms (shared `js/online.js`, Firebase `th-board-games`) | done, two-browser game verified |
+| Visual design pass (2026-10-20): walled cities with little houses, tile light/bevel, bigger meeples with shadows, quieter hint squares (best one solid), rotate animates, dock fixed height, 42 px zoom buttons, 6x4 tiles grid on laptop | done, before/after screenshots at 393 px + 1440 px |
 | Traders & Builders | parked (see Rejected / parked) |
 
 ## Authorized next steps
@@ -36,6 +37,9 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - Results sheet appears about 2 s after the last tile in WebKit; screenshot scripts must wait.
 - River tiles that cannot be placed are set aside (about 1 in 60 computer games).
 - Strength sims: `node tools/sim.js` (slow; 1000 games takes minutes).
+- City walls are drawn only on the field side (`city()` in `render.js` returns fill + wall paths); stroking the whole shape puts a seam on tile edges.
+- The tile bevel sits outside the rotate group in `RD.tile()` so the light stays top-left. Rotation animation: `spinFrom()` in `app.js` (hand + ghost).
+- Screenshots of mid-game states: build a saved state with the engine + AI in node and load it through a throwaway page that sets `localStorage['carcassonne:v1']` (too big for `--local` on Windows).
 
 ## Decisions
 - Default rules: current (3rd edition) farms, 2-tile city = 4, farmers on. Settings offer 1st-edition farms, old 2-tile city = 2, farmers off.

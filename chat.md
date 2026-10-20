@@ -6,3 +6,9 @@
 - **Verified:** engine 162, odds 15, online 18 tests passing (each seen failing against a broken engine); full 6-player River + I&C game in WebKit at 393 px with 0 errors; two-browser online game on real Firebase (both agreed on scores); all tabs at 393 px and laptop, no overflow, no console errors.
 - **QA (fresh agent, live site, 2026-10-20):** no crashes or console errors. Fixed: end-of-game scoring now in the log ("(end)"), the results sheet shows when the game ended on another tab, the old 2-tile city gives 1 per shield, and the chip and badge clipping. Each fix was re-measured (off-tab game: sheet shown, log sum 185 = score total 185).
 - **Open:** Traders & Builders parked; real-iPhone check; online with expansions in a live browser.
+
+## 2026-10-20 — visual design pass
+- **Asked:** Tim: "review them again for design improvements especially visually."
+- **Built:** walled cities with houses (no seam on tile edges), tile bevel, bigger pennants and monasteries, meeples 32/44 with outline + shadow, hint squares quieter with the best one solid gold, rotate animates (hand and board), dock fixed height so nothing jumps, disabled Place looks disabled, 4-player chips on one grid, 42 px zoom buttons, taller setting options, results table even columns + chart baseline, laptop: bigger dock text, 6x4 tiles grid.
+- **Verified:** tests 164/15/18 pass; before/after screenshots of 8 states at 393 px and 1440 px (WebKit), 0 console errors, no overflow, no page scroll; dock positions measured equal before/after picking a meeple; spin class measured on hand and ghost.
+- **Open:** look on Tim's real iPhone.
