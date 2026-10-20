@@ -1,0 +1,7 @@
+# Carcassonne — chat log
+
+## 2026-10-18 to 2026-10-19 — first build (games wave, phase 1 + 2)
+- **Asked:** Tim: "do ... carcasson." Base game with the real 72-tile mix, own SVG art, real-table companion like the Catan stats site, vs 1–4 computers at measured strength with hints and a study mode. Phase 2: exact rules incl. common variants, online play, ideas list, polish for iPhone and laptop, rules check with sources, QA.
+- **Built:** engine, tiles, AI, render, app (Play / Tiles / Scores / Settings), companion odds, online rooms through the shared `online.js`, River and Inns & Cathedrals, 6 players, big meeple, strength table, `docs/ideas.md`, `docs/rules-check.md`.
+- **Verified:** engine 162, odds 15, online 18 tests passing (each seen failing against a broken engine); full 6-player River + I&C game in WebKit at 393 px with 0 errors; two-browser online game on real Firebase (both agreed on scores); all tabs at 393 px and laptop, no overflow, no console errors.
+- **Open:** Traders & Builders parked; real-iPhone check; online with expansions in a live browser.
