@@ -1,7 +1,7 @@
 # Carcassonne — progress
 
 ## START HERE
-Last updated: 2026-10-20 (one auto-fit zoom). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
+Last updated: 2026-10-20 (sounds, celebrations, animations). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
 
 ## Goal right now
 Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, online rooms, and a real-table companion. Waiting on Tim's feedback.
@@ -18,6 +18,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 | Online rooms (shared `js/online.js`, Firebase `th-board-games`) | done, two-browser game verified |
 | Visual design pass (2026-10-20): walled cities with little houses, tile light/bevel, bigger meeples with shadows, quieter hint squares (best one solid), rotate animates, dock fixed height, 42 px zoom buttons, 6x4 tiles grid on laptop | done, before/after screenshots at 393 px + 1440 px |
 | One zoom (2026-10-20): auto fit of every tile + empty spot, glides as the board grows; pinch/wheel/+ to zoom, Fit (lit when zoomed) or double-tap off a spot to go back | done, `tests/zoom.ui.mjs` 60/60 |
+| Sound & effects (2026-10-20): shared `js/fx.js` + `js/sfx.js`; sounds for every move (yours, computers', online), win/lose celebration, big-city sparkle, score count-ups, meeples fly home; Settings "Sound & effects" section | done, `tests/fx.ui.mjs` 49/49 (26 fails + crash on old code) |
 | Traders & Builders | parked (see Rejected / parked) |
 
 ## Authorized next steps
@@ -30,7 +31,31 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - "make sure that everything works properlly without errors... Make sure to get everything right like rules and artwork and specific numbers of cards, routes, details, etc."
 - (2026-10-20, all zoomable boards) "some games have maps and whatnot you can zoom in and out of often. Make it so that there is only an auto zoom that automatically fits the whole board in sight and then you can zoom if you want with easily reseting back to auto mode."
 
+- (2026-10-20, all games) "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered."
+
+## Sound map (event -> sound; `js/sfx.js` plan() + `app.js` moveFx/turnFx/finalFx)
+| Event | Sound | Animation |
+|---|---|---|
+| Tap a square where the tile can't go (your turn) | `error` | - |
+| Pick a square / Hint | `cardSlide` (pitch .6) | ghost tile (existing) |
+| Rotate (button or tap the tile again) | `tileTurn` (custom) | quarter turn (existing) |
+| Meeple circle on / big meeple / off | `meeple` (custom) / pitch .8 / `tap` | - |
+| Tile placed (anyone; computers at vol .85) | `place` (wood knock) | drop-in (existing) |
+| Placed with a meeple | `meeple` +110 ms | - |
+| City / road / monastery finished | `coins` / `coin` / `bell` (custom), 300 ms + 250 ms each, in step with the +N floaters | +N floater, chip score counts up + pops |
+| Meeples come home | `pop` (pitch .75) | meeple flies board -> owner's chip |
+| Your city worth 20+ | (ding) | `celebrate big` sparkle at your chip |
+| Next tile drawn | `tileDraw` (custom) | - |
+| It becomes YOUR turn | `turn` chime, 500 ms after the last move | pulse of your tile |
+| Game ends | `drumroll`; farm +N floaters; chips count to final | results: Farm + Total count up 0.9 s, then `celebrate win` (your colours) or `lose` |
+| Tiles tab: tile tapped / sold-out tile | `tileDraw` / `error` + shake | - |
+| Scores tab: Add | `coin` (<10) or `coins` | points count up |
+| Other buttons | `tap` (fx auto clicks; not Rotate/Place/Hint/tiles grid) | - |
+
 ## Traps
+- `js/fx.js` is a byte copy of `Board and Card Games/_fx/fx.js`: never edit it here; game sounds go in `js/sfx.js` (`FX.define`). Its `:where(.fx-set) .switch/.seg/.q` rules have class specificity, so `style.css` restyles them to match the game (`.fx-set ...`).
+- Animations off adds `fx-still` on `<html>` (all CSS animations/transitions off, no floaters); Fast adds `fx-fast`. `finalFx` runs once per game (`g.cheered`).
+- `tests/fx.ui.mjs` uses a fake AudioContext (WebKit on Windows has none) and spies on FX. Headless WebKit runs frames slowly, so confetti screenshots show it only at the corners.
 - `js/online.js` is a copy of the shared `_online/online.js`; edit the shared one, then recopy.
 - `js/net.js` is an ES module that hands `createOnline` to the plain-script app via `self.CarcNet` and a `carcnet` event.
 - Online: after sending a move the UI blocks until `st.moves` changes (`sentAt`), or a fast second tap sends a double move.
@@ -50,6 +75,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - I&C: first-edition 18 tiles, no garden.
 - 6-player chips on phone use a compact layout (no names).
 - Easy computer plays the best move with skill 0.6 (weaker on purpose).
+- Sound & effects sits in Settings after Rules; "big" sparkle only for your own finished city of 20+ points; computers' sounds at 85% volume; a game with only computers gets no win/lose.
 - Auto fit caps a tile at 150 px (else the opening tile fills a laptop screen); manual zoom max is 2.5 or twice the fit.
 
 ## Measured strength (1000 games each)
@@ -60,6 +86,7 @@ Hard vs Med 81%, Hard vs Easy 98%, Med vs Easy 95%, Hard vs 3 Med 84%, Med vs 3 
 - Online with 3 or more real browsers (two-browser game verified).
 - Real two-finger pinch on an iPhone (test uses synthetic pointer events in WebKit).
 - Online games with River or I&C turned on (engine tests cover the adapter with options; no live browser run).
+- How the sounds actually sound and their loudness on a real iPhone (tests use a fake speaker); online sounds from another player's move (same code path as computer moves, not run with two browsers).
 
 ## Rejected / parked
 - ~~Traders & Builders~~ parked: needs goods tokens, the builder double turn and the pig; base + River + I&C first.

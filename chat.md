@@ -18,3 +18,9 @@
 - **Built:** auto fit (all tiles + every empty spot) on load, new game, Play-tab return, resize/rotation (ResizeObserver) and every placed tile, gliding; one-finger drag does nothing in auto; pinch / wheel / + zoom in, drag pans clamped; can't zoom out past the fit (that is auto again); Fit dimmed in auto, lit blue when zoomed; double-tap off a spot resets. Removed the old free drag and the 0.12 min zoom. Phone on its side: zoom buttons in a row (the column was cut off).
 - **Verified:** new `tests/zoom.ui.mjs` (WebKit, 393x659, 659x393, 1280x800, a 65-tile game, 3 growing moves): 38 fails on the old code, 60/60 on the new (4 runs in a row). Glide measured (scale 1.26 -> 1.04 -> 0.95 over 750 ms). Late game: a tile is 25.6 px at 393 px in auto.
 - **Open:** pinch on a real iPhone.
+
+## 2026-10-20 — sounds, celebrations, animations
+- **Asked:** Tim (all games): "add opptional sounds ... win celebrations, and other fun annimations ... make sure everything is customizable in the settings".
+- **Built:** shared `js/fx.js` copied in; `js/sfx.js` (custom tileDraw / tileTurn / meeple / bell + the per-move sound plan); `app.js` moveFx (sounds in step with floaters, chip count-up, meeples fly home, big-city sparkle), turnFx (chime + pulse on your turn), finalFx (farm/total count-up then win/lose); Tiles/Scores tab sounds; Settings "Sound & effects" section; Animations off/Fast also cover the game's own CSS motion.
+- **Verified:** `tests/fx.ui.mjs` (WebKit, fake speaker): 26 fails + a crash on the old code, 49/49 on the new (3 runs); engine 164, odds 15, online 18, zoom 60 still pass; screenshots at 393 px and 1280 px, no console errors, no overflow.
+- **Open:** real-iPhone listen; two-browser online sound check.

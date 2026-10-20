@@ -32,6 +32,80 @@
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch (e) { /* private mode: still works, just not saved */ }
   }
 
+  // ---------------------------------------------------------------- sound + effects (js/fx.js, js/sfx.js)
+  // FX is looked up at call time (and may be missing): every effect is optional.
+  const fx = () => self.FX || null;
+  const sfx = (name, o) => { const F = fx(); return F ? F.play(name, o) : false; };
+  const anims = () => { const F = fx(); return !!(F && F.settings.animations); };
+  const speed = () => { const F = fx(); return F && F.settings.animSpeed === 'fast' ? 0.55 : 1; };
+  function fxClasses() {
+    const root = document.documentElement;
+    root.classList.toggle('fx-still', !anims());
+    root.classList.toggle('fx-fast', anims() && speed() < 1);
+  }
+  if (fx()) fx().onChange(fxClasses);
+  fxClasses();
+
+  // Screen point of a spot in board units (100 per tile).
+  function boardPoint(wx, wy) {
+    const r = $('board').getBoundingClientRect();
+    return { x: r.left + vs.tx + vs.s * wx, y: r.top + vs.ty + vs.s * wy };
+  }
+  // Everything one finished move does besides the redraw: sounds in order,
+  // scores counting up on the chips, meeples flying home, a sparkle for a big city.
+  function moveFx(prev, g) {
+    const st = g.st, L = st.last, F = fx(), SX = self.CarcSfx;
+    if (!L || !F || !SX) return;
+    const my = gen, mine = g.seats[L.p] === 'you', k = speed(), vis = anims() && S.tab === 'play';
+    const chipAt = (p) => document.querySelectorAll('#players .pchip')[p];
+    for (const s of SX.plan(prev, st, mine)) setTimeout(() => { if (my === gen) sfx(s.name, s.opts); }, s.at * k);
+    // Meeples go back to their owner's chip.
+    if (vis) for (const m of SX.returned(prev, st)) {
+      const [x, y] = m.key.split(',').map(Number);
+      const f = T.TYPES[m.t].rot[m.r].feats[m.fi];
+      const at = boardPoint(x * 100 + f.spot[0], y * 100 + f.spot[1]);
+      const size = Math.max(14, (m.big ? 44 : 32) * vs.s);
+      const el = document.createElement('div');
+      el.innerHTML = `<svg viewBox="0 0 20 20" width="${size}" height="${size}"><use href="#meeple" fill="${RD.PLAYER[m.p]}" stroke="rgba(255,255,255,.9)" stroke-width="1.3" paint-order="stroke"/></svg>`;
+      el.style.cssText = `position:fixed;left:${at.x - size / 2}px;top:${at.y - size / 2}px;width:${size}px;height:${size}px;pointer-events:none;z-index:30`;
+      document.body.appendChild(el);
+      setTimeout(() => {
+        const chip = chipAt(m.p);
+        if (my !== gen || !chip) { el.remove(); return; }
+        F.flyTo(el, chip.querySelector('svg') || chip, { clone: false, duration: 520, scale: 0.6 }).then(() => el.remove());
+      }, (300 + L.ev.length * 250) * k);
+    }
+    // Scores count up on the chips (the end-of-game farms included).
+    st.scores.forEach((v, p) => {
+      const was = prev.scores[p];
+      if (v === was || !vis || !chipAt(p)) return;
+      chipAt(p).querySelector('.sc').textContent = was;
+      setTimeout(() => {
+        const c = chipAt(p);
+        if (my !== gen || !c) return;
+        F.countUp(c.querySelector('.sc'), was, v, { duration: st.over ? 900 : 600 }); F.pop(c);
+      }, 300 * k);
+    });
+    for (const e of L.ev) {
+      if (!SX.bigCity(e) || !e.who.some((p) => g.seats[p] === 'you')) continue;
+      setTimeout(() => { if (my === gen) F.celebrate({ kind: 'big', at: chipAt(e.who[0]), colors: [RD.PLAYER[e.who[0]], '#f0b354', '#e8eaf0'] }); }, 450 * k);
+    }
+    if (vis && st.over && st.final) floatEvents(st.final.filter((e) => e.kind === 'farm').slice(0, 12), 0.1);
+  }
+  // "Your turn": a chime and a pulse of your tile, once per turn, after the last move's sounds.
+  let chimedAt = -1;
+  function turnFx() {
+    const g = S.game;
+    if (!g || g.st.over || !isHumanTurn() || chimedAt === g.st.moves) return;
+    chimedAt = g.st.moves;
+    const my = gen, at = g.st.moves;
+    setTimeout(() => {
+      if (my !== gen || !S.game || S.game.st.moves !== at || !isHumanTurn()) return;
+      sfx('turn');
+      if (fx() && S.tab === 'play') fx().pulse($('hand'));
+    }, g.st.moves ? 500 * speed() : 0);
+  }
+
   // ---------------------------------------------------------------- online room (js/online.js via js/net.js)
   let net = null;          // createOnline(...) handle
   let netSnap = null;      // last snapshot from the room
@@ -68,6 +142,7 @@
         return;
       }
       const moved = snap.pub.moves > g.st.moves;
+      const prev = g.st;
       g.st = snap.pub; g.seats = netSeats(snap);
       if (moved) {
         g.race.push(g.st.scores.slice());
@@ -77,6 +152,7 @@
       }
       if (S.tab === 'play') { renderPlay(); if (moved && g.st.last) floatEvents(g.st.last.ev); }
       tick();
+      if (moved && g.st.last) moveFx(prev, g);
       return;
     }
     if (!inRoom() && S.game && S.game.online) leaveOnline(true);
@@ -186,7 +262,7 @@
       if (g.shown !== g.st.moves && S.tab === 'play') { g.shown = g.st.moves; setTimeout(showFinal, 700); }
       return;
     }
-    if (isHumanTurn() || g.online) { renderPlay(); return; }   // online: the host's browser runs the computers
+    if (isHumanTurn() || g.online) { renderPlay(); turnFx(); return; }   // online: the host's browser runs the computers
     renderPlay();
     const my = gen;
     setTimeout(() => {
@@ -215,7 +291,7 @@
       });
       return;
     }
-    const p = g.st.turn;
+    const p = g.st.turn, prev = g.st;
     g.st = E.apply(g.st, a);
     g.race.push(g.st.scores.slice());
     const evs = g.st.last.ev.map((e) => ({ ...e, by: p }));
@@ -226,6 +302,7 @@
     renderPlay();
     floatEvents(g.st.last.ev);
     tick();
+    if (S.game === g) moveFx(prev, g);
   }
 
   // ---------------------------------------------------------------- board view
@@ -480,8 +557,10 @@
     if (window.innerWidth >= 900) renderSide();
   }
 
-  function floatEvents(evs) {
+  function floatEvents(evs, gap) {
     const host = $('floaters');
+    if (!anims()) return;   // Animations off: the scores just change
+    const step = (gap || 0.25) * speed();
     evs.forEach((e, i) => {
       let sx = 0, sy = 0;
       for (const k of e.where) { const [x, y] = k.split(',').map(Number); sx += x; sy += y; }
@@ -491,10 +570,10 @@
       d.style.left = vs.tx + vs.s * cx + 'px';
       d.style.top = vs.ty + vs.s * cy + 'px';
       d.style.color = RD.PLAYER[e.who[0]] === '#2a2d36' ? '#e8eaf0' : RD.PLAYER[e.who[0]];
-      d.style.animationDelay = i * 0.25 + 's';
+      d.style.animationDelay = i * step + 's';
       d.textContent = '+' + e.pts;
       host.appendChild(d);
-      setTimeout(() => d.remove(), 2200 + i * 250);
+      setTimeout(() => d.remove(), (2200 + i * step * 1000) * speed());
     });
   }
 
@@ -504,7 +583,7 @@
     const st = g.st;
     const order = st.scores.map((v, i) => i).sort((a, b) => st.scores[b] - st.scores[a]);
     const rows = order.map((i) => `<tr><td><svg viewBox="0 0 20 20" style="width:16px;height:16px;vertical-align:-3px"><use href="#meeple" fill="${RD.PLAYER[i]}"/></svg> ${esc(seatName(i))}</td>
-      <td>${st.bd[i].city}</td><td>${st.bd[i].road}</td><td>${st.bd[i].cloister}</td><td>${st.bd[i].farm}</td><td class="tot">${st.scores[i]}</td></tr>`).join('');
+      <td>${st.bd[i].city}</td><td>${st.bd[i].road}</td><td>${st.bd[i].cloister}</td><td data-farm="${i}">${st.bd[i].farm}</td><td class="tot" data-tot="${i}">${st.scores[i]}</td></tr>`).join('');
     // Score race chart
     const W = 440, H = 130, n = g.race.length - 1 || 1, max = Math.max(10, ...g.race.flat());
     const lines = `<line x1="5" x2="${W - 5}" y1="${H - 6}" y2="${H - 6}" stroke="#2a3042"/>` + g.seats.map((_, p) => {
@@ -521,6 +600,28 @@
       <p class="muted" style="margin-top:-4px">Score after each tile; the jump at the end is farms and unfinished features.</p>
       ${lost}
       <div class="acts"><button class="btn" data-close>Look at board</button><button class="btn primary" id="btn-new3">New game</button></div></div>`);
+    if (!g.cheered) { g.cheered = true; save(); finalFx(g); }
+  }
+  // The first time the results show: farms and totals count up, then you win (or lose).
+  function finalFx(g) {
+    const F = fx(), st = g.st;
+    if (!F) return;
+    const pre = st.scores.slice();
+    for (const e of st.final || []) for (const p of e.who) pre[p] -= e.pts;
+    const counts = [];
+    st.scores.forEach((v, p) => {
+      const fe = document.querySelector(`[data-farm="${p}"]`), te = document.querySelector(`[data-tot="${p}"]`);
+      if (fe && st.bd[p].farm) counts.push(F.countUp(fe, 0, st.bd[p].farm, { duration: 900 }));
+      if (te && v !== pre[p]) counts.push(F.countUp(te, pre[p], v, { duration: 900 }));
+    });
+    const you = g.seats.map((k, i) => (k === 'you' ? i : -1)).filter((i) => i >= 0);
+    if (!you.length) return;   // computers only: nobody here to cheer for
+    const top = Math.max(...st.scores);
+    const winners = st.scores.map((v, i) => (v === top ? i : -1)).filter((i) => i >= 0);
+    const kind = winners.some((i) => you.includes(i)) ? 'win' : 'lose';
+    const colors = winners.map((i) => (i === 4 ? '#c9ccd6' : RD.PLAYER[i])).concat(['#f0b354', '#e8eaf0', '#6ea8fe']);
+    const my = gen;
+    Promise.all(counts).then(() => { if (my === gen) F.celebrate({ kind, colors }); });
   }
 
   // ---------------------------------------------------------------- board input: tap, drag, pinch, wheel
@@ -617,6 +718,7 @@
     const rect = $('board').getBoundingClientRect();
     const wx = (cx - rect.left - vs.tx) / vs.s, wy = (cy - rect.top - vs.ty) / vs.s;
     const x = Math.floor(wx / 100), y = Math.floor(wy / 100);
+    if (!legalRots(x, y).length) { sfx('error'); return; }   // a tile can't go there
     pickCell(x, y);
   }
   function legalRots(x, y) { const st = S.game.st; return [0, 1, 2, 3].filter((r) => E.canPlace(st, x, y, st.cur, r)); }
@@ -628,9 +730,11 @@
     if (S.set.hints) { const b = getRanked().find((m) => m.x === x && m.y === y); if (b) r = b.r; }
     sel = { x, y, r, fi: -1 };
     showBest = null;
+    sfx('cardSlide', { pitch: 0.6, vol: 0.6 });   // the tile slid onto the square
     renderBoard(); renderHand(); renderDock();
   }
   function rotateSel() {
+    sfx('tileTurn');
     if (!sel) { handR = (handR + 1) % 4; renderHand(); return; }
     const rots = legalRots(sel.x, sel.y);
     sel.r = rots[(rots.indexOf(sel.r) + 1) % rots.length];
@@ -753,6 +857,7 @@
         <div class="set-row"><span class="l">Farm scoring <button class="q" data-help="farm">?</button></span>${seg('farm', [['3rd', 'Current'], ['1st', '1st edition']], s.farm)}</div>
         <div class="set-row"><span class="l">2-tile city <button class="q" data-help="small">?</button></span>${seg('smallCity', [[4, '4 points'], [2, '2 points']], s.smallCity)}</div>
       </section>
+      <section class="card set-sec"><h3>Sound &amp; effects</h3><div id="fx-box"></div></section>
       <section class="card set-sec"><h3>At the table</h3>
         <div class="set-row"><span class="l">Players</span>${seg('tplayers', [[2, '2'], [3, '3'], [4, '4'], [5, '5']], tb.names.length)}</div>
         ${tb.names.map((n, i) => `<div class="seat">${meepleIcon(i, 22)}<input data-name="${i}" value="${esc(n)}" maxlength="16" aria-label="Player ${i + 1} name"><button class="btn small ${i === tb.me ? 'warm' : 'ghost'}" data-me="${i}">${i === tb.me ? 'Me' : 'Is me'}</button></div>`).join('')}
@@ -760,6 +865,7 @@
       </section>
       <section class="card set-sec"><h3>How strong? <button class="q" data-help="strength">?</button></h3>${STRENGTH}</section>
       <section class="set-sec"><a href="../" class="muted">← more board &amp; card games</a></section>`;
+    if (fx()) fx().renderSettings($('fx-box'));
   }
   function renderOnline() {
     const err = netErr ? `<div class="net-err">${esc(netErr)}</div>` : '';
@@ -844,6 +950,7 @@
       if (sel.fi !== fi) { sel.fi = fi; sel.big = !small; }
       else if (!sel.big && large) sel.big = true;
       else { sel.fi = -1; sel.big = false; }
+      if (sel.fi >= 0) sfx('meeple', { pitch: sel.big ? 0.8 : 1 }); else sfx('tap');
       renderBoard(); renderHand(); renderDock(); return;
     }
     if (b.id === 'btn-rotate') { rotateSel(); return; }
@@ -853,6 +960,7 @@
       const best = getRanked()[0];
       sel = { x: best.x, y: best.y, r: best.r, fi: best.fi, big: !!best.big };
       showBest = { x: best.x, y: best.y };
+      sfx('cardSlide', { pitch: 0.6, vol: 0.6 });
       renderBoard(); renderHand(); renderDock(); return;
     }
     if (b.id === 'btn-new' || b.id === 'btn-new2' || b.id === 'btn-new3') { if (b.id === 'btn-new') setTab('play'); newGame(); return; }
@@ -860,8 +968,9 @@
     // ---- tiles
     if (d.t !== undefined) {
       const t = +d.t, rem = remainingCounts();
-      if (!rem[t] || S.table.drawn.length >= BAG) return;
+      if (!rem[t] || S.table.drawn.length >= BAG) { sfx('error'); if (fx()) fx().shake(b); return; }
       S.table.drawn.push(t); save(); renderTiles();
+      sfx('tileDraw');
       const nb = document.querySelector(`.tbtn[data-t="${t}"]`); if (nb) nb.classList.add('bump');
       return;
     }
@@ -885,7 +994,11 @@
       for (const i of who) S.table.scores[i] += pts;
       S.table.log.push({ who, pts, what });
       tally.m = tally.m.map(() => 0);
-      save(); renderScores(); return;
+      save(); renderScores();
+      sfx(pts >= 10 ? 'coins' : 'coin');
+      const F = fx(), rows = document.querySelectorAll('#sc-list .sc-row');
+      if (F) for (const i of who) if (rows[i]) { F.countUp(rows[i].querySelector('.pts'), S.table.scores[i] - pts, S.table.scores[i]); F.pop(rows[i].querySelector('.pts')); }
+      return;
     }
     if (d.undo !== undefined) {
       const e2 = S.table.log.splice(+d.undo, 1)[0];
