@@ -55,7 +55,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 ## Traps
 - `js/fx.js` is a byte copy of `Board and Card Games/_fx/fx.js`: never edit it here; game sounds go in `js/sfx.js` (`FX.define`). Its `:where(.fx-set) .switch/.seg/.q` rules have class specificity, so `style.css` restyles them to match the game (`.fx-set ...`).
 - Animations off adds `fx-still` on `<html>` (all CSS animations/transitions off, no floaters); Fast adds `fx-fast`. `finalFx` runs once per game (`g.cheered`).
-- `tests/fx.ui.mjs` uses a fake AudioContext (WebKit on Windows has none) and spies on FX. fx.js is 1.0.2 (time-based confetti); recopy and bump `?v=` when `_fx` changes.
+- `tests/fx.ui.mjs` uses a fake AudioContext (WebKit on Windows has none) and spies on FX. fx.js is 1.0.3 (time-based confetti); recopy and bump `?v=` when `_fx` changes.
 - `js/online.js` is a copy of the shared `_online/online.js`; edit the shared one, then recopy.
 - `js/net.js` is an ES module that hands `createOnline` to the plain-script app via `self.CarcNet` and a `carcnet` event.
 - Online: after sending a move the UI blocks until `st.moves` changes (`sentAt`), or a fast second tap sends a double move.
