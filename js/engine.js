@@ -343,11 +343,13 @@
   function clone(st) { return JSON.parse(JSON.stringify(st)); }
   function apply(st, a) { return applyMut(clone(st), a); }
 
-  // What one seat may see: everything except the order of the bag.
+  // What one seat may see: everything except the order of the bag. Which tiles
+  // are left is public at a real table (anyone can count them), so the bag is
+  // kept as a sorted list: counts and bag.length still work, the order is gone.
   function view(st) {
     const v = clone(st);
+    v.bag.sort((a, b) => a - b);
     v.bagCounts = bagLeft(st);
-    v.bag = [];
     return v;
   }
   function bagLeft(st) {

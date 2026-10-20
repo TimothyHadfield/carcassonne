@@ -12,15 +12,16 @@ function game(levels, seed) {
 
 // Seats rotate so nobody gains from going first.
 function match(a, b, games) {
-  let wa = 0, wb = 0, tie = 0, pa = 0, pb = 0;
+  let wa = 0, wb = 0, tie = 0, pa = 0, pb = 0, first = 0;
   for (let i = 0; i < games; i++) {
     const swap = i % 2 === 1;
     const s = game(swap ? [b, a] : [a, b], 1000 + i);
+    first += s[0] > s[1] ? 1 : s[0] === s[1] ? 0.5 : 0;
     const sa = swap ? s[1] : s[0], sb = swap ? s[0] : s[1];
     pa += sa; pb += sb;
     if (sa > sb) wa++; else if (sb > sa) wb++; else tie++;
   }
-  return { a, b, games, winA: (100 * (wa + tie / 2) / games).toFixed(1), avgA: (pa / games).toFixed(1), avgB: (pb / games).toFixed(1) };
+  return { a, b, games, winA: (100 * (wa + tie / 2) / games).toFixed(1), avgA: (pa / games).toFixed(1), avgB: (pb / games).toFixed(1), firstSeatWins: (100 * first / games).toFixed(1) };
 }
 
 // One `who` against three `rest`, seat rotating. Fair share is 25%.

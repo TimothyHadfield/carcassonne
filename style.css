@@ -212,6 +212,14 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(42,48,66,.6); min-height: 44px; }
 .set-row:last-child { border-bottom: 0; }
 .set-row .l { font-size: 14.5px; }
+.str { width: 100%; border-collapse: collapse; font-size: 14px; }
+.str th { text-align: left; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 4px 0; }
+.str td { padding: 6px 0; border-top: 1px solid rgba(42,48,66,.6); }
+.str td:nth-child(2) { font-weight: 800; color: var(--warm); }
+.net-in { max-width: 170px; }
+.net-in.code { text-transform: uppercase; letter-spacing: .15em; max-width: 120px; }
+.net-code { font-size: 30px; font-weight: 800; letter-spacing: .2em; color: var(--warm); }
+.net-err { color: #f08c8c; font-size: 13.5px; padding: 6px 0; }
 .seg { display: inline-flex; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
 .seg button { padding: 5px 10px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--card-hover); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
@@ -221,7 +229,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .switch[aria-checked="true"]::after { transform: translateX(18px); }
 .seat { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .seat svg { width: 22px; height: 22px; flex: none; }
-.seat input { flex: 1; min-width: 0; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+.seat input, .net-in { flex: 1; min-width: 0; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
 .strength { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .strength td, .strength th { padding: 4px; border-bottom: 1px solid var(--line); text-align: right; }
 .strength td:first-child, .strength th:first-child { text-align: left; }

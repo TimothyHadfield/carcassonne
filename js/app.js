@@ -26,7 +26,92 @@
     if (!s || typeof s !== 'object') return d;
     return { tab: s.tab || d.tab, set: Object.assign(d.set, s.set), table: Object.assign(d.table, s.table), game: s.game || null };
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* private mode: still works, just not saved */ } }
+  function save() {
+    // An online game lives in the room, not here: keep the local game saved instead.
+    const out = S.game && S.game.online ? Object.assign({}, S, { game: localBackup }) : S;
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch (e) { /* private mode: still works, just not saved */ }
+  }
+
+  // ---------------------------------------------------------------- online room (js/online.js via js/net.js)
+  let net = null;          // createOnline(...) handle
+  let netSnap = null;      // last snapshot from the room
+  let netErr = '';
+  let netBusy = false;
+  let sentAt = -1;         // move number my last online move was sent at; my turn waits until the room moves on
+  let localBackup = null;  // the local game, put back when the room ends
+  const inRoom = () => !!(netSnap && ['lobby', 'playing', 'finished', 'joining'].includes(netSnap.status));
+  function getNet() {
+    if (net) return net;
+    if (!self.CarcNet) return null;
+    net = self.CarcNet.createOnline({ game: self.CarcGame, gameId: 'carcassonne', botDelayMs: 750 });
+    net.on('change', onNet);
+    net.on('error', (m) => { netErr = String(m || ''); if (S.tab === 'settings') renderSettings(); else if (S.tab === 'play' && S.game) $('substatus').textContent = netErr; });
+    return net;
+  }
+  function netSeats(snap) {
+    const lv = (snap.pub && snap.pub.opts.levels) || [];
+    return snap.seats.map((s, i) => (i === snap.mySeat ? 'you' : s.kind === 'computer' ? (lv[i] || 'hard') : 'net'));
+  }
+  function onNet(snap) {
+    netSnap = snap;
+    if (snap.error) netErr = snap.error;
+    const live = snap.pub && (snap.status === 'playing' || snap.status === 'finished');
+    if (live) {
+      const g = S.game;
+      if (!g || !g.online) {
+        localBackup = S.game;
+        S.game = { online: true, st: snap.pub, seats: netSeats(snap), lost: [], race: [snap.pub.scores.slice()], log: [] };
+        sel = null; ranked = null; rankedAt = -1; study = null; showBest = null; vs.user = false;
+        save();
+        if (S.tab !== 'play') setTab('play'); else renderPlay(true);
+        tick();
+        return;
+      }
+      const moved = snap.pub.moves > g.st.moves;
+      g.st = snap.pub; g.seats = netSeats(snap);
+      if (moved) {
+        g.race.push(g.st.scores.slice());
+        if (g.st.last) for (const e of g.st.last.ev) g.log.push({ ...e, by: g.st.last.p });
+        sel = null; handR = 0; showBest = null;
+      }
+      if (S.tab === 'play') { renderPlay(); if (moved && g.st.last) floatEvents(g.st.last.ev); }
+      tick();
+      return;
+    }
+    if (!inRoom() && S.game && S.game.online) leaveOnline(true);
+    if (S.tab === 'settings') renderSettings();
+  }
+  function leaveOnline(already) {
+    if (net && !already) net.leave();
+    netSnap = null;
+    if (S.game && S.game.online) {
+      S.game = localBackup; localBackup = null;
+      gen++; sel = null; ranked = null; rankedAt = -1; study = null; showBest = null;
+      save();
+      if (S.tab === 'play') renderPlay(true);
+      if (S.game) tick();
+    }
+    if (S.tab === 'settings') renderSettings();
+  }
+  async function createRoom() {
+    const n = getNet(); if (!n || netBusy) return;
+    netBusy = true; netErr = ''; renderSettings();
+    const name = S.set.oname || 'Player';
+    const seats = S.set.seats.map((k, i) => (k === 'you' ? 'human' : { kind: 'computer', name: LEVEL_NAME[k] }));
+    const levels = S.set.seats.map((k) => (k === 'you' ? 'hard' : k));
+    const r = await n.createRoom({ name, seats, options: { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, levels } });
+    netBusy = false;
+    if (!r.ok) netErr = r.message;
+    renderSettings();
+  }
+  async function joinRoom(code) {
+    const n = getNet(); if (!n || netBusy) return;
+    netBusy = true; netErr = ''; renderSettings();
+    const r = await n.joinRoom(code, S.set.oname || 'Player');
+    netBusy = false;
+    if (!r.ok) netErr = r.message;
+    renderSettings();
+  }
 
   // ---------------------------------------------------------------- help text (the "?" buttons say WHY)
   const HELP = {
@@ -37,6 +122,7 @@
     farm: 'Current rules: each farm scores 3 for every finished city it touches. First edition: each finished city pays 4 to whoever has the most farmers in all the farms touching it.',
     small: 'Current rules: a finished 2-tile city is worth 4 like any other city (2 per tile). Before 2004 (first editions) it was only worth 2.',
     strength: 'Measured by letting the computers play thousands of full games against each other with the same tile bags and seats swapped. The table shows how often the row player wins.',
+    online: 'Create a room and friends type its 5-letter code on their own phone to join. Every "You" seat above becomes a seat for a person; computer seats stay computers. Your phone runs the game and the computers, so keep this page open until the game ends. Free: no account needed.',
     tally: 'Pick what was scored, set its size, then tap each player once for every meeple they have on it. Whoever has the most gets the points; ties all score.',
   };
 
@@ -47,14 +133,19 @@
   let ranked = null, rankedAt = -1;
   let study = null;     // {lost, best, mine} for the last human move
   let showBest = null;
+  let animatedAt = -1;
   const vs = { s: 0.6, tx: 0, ty: 0, user: false };
 
   function seatName(i) {
     const g = S.game, k = g.seats[i];
-    if (k === 'you') return g.seats.filter((q) => q === 'you').length > 1 ? 'Player ' + (i + 1) : 'You';
-    return RD.PLAYER_NAME[i];
+    if (g.online && k === 'you') return 'You';
+    if (k === 'net') return (netSnap && netSnap.seats[i] && netSnap.seats[i].name) || RD.PLAYER_NAME[i];
+    if (k === 'you') return g.seats.filter((q) => q === 'you').length > 1 ? RD.PLAYER_NAME[i] : 'You';
+    // Computers go by level; the meeple colour tells two of the same apart.
+    return g.seats.filter((q) => q === k).length > 1 ? LEVEL_NAME[k] + ' ' + RD.PLAYER_NAME[i].toLowerCase() : LEVEL_NAME[k];
   }
   function newGame() {
+    if (S.game && S.game.online) leaveOnline();
     gen++;
     const seats = S.set.seats.slice();
     const st = E.newGame({ players: seats.length, farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, seed: (Math.random() * 2 ** 31) >>> 0 });
@@ -66,7 +157,12 @@
     tick();
   }
 
-  function isHumanTurn() { const g = S.game; return g && !g.st.over && g.seats[g.st.turn] === 'you'; }
+  function isHumanTurn() {
+    const g = S.game;
+    if (!g || g.st.over) return false;
+    if (g.online) return !!(netSnap && netSnap.myTurn && sentAt !== g.st.moves);
+    return g.seats[g.st.turn] === 'you';
+  }
 
   function getRanked() {
     const st = S.game.st;
@@ -81,8 +177,12 @@
   function tick() {
     const g = S.game;
     if (!g) return;
-    if (g.st.over) { renderPlay(); setTimeout(showFinal, 700); return; }
-    if (isHumanTurn()) { renderPlay(); return; }
+    if (g.st.over) {
+      renderPlay();
+      if (g.shown !== g.st.moves) { g.shown = g.st.moves; setTimeout(showFinal, 700); }
+      return;
+    }
+    if (isHumanTurn() || g.online) { renderPlay(); return; }   // online: the host's browser runs the computers
     renderPlay();
     const my = gen;
     setTimeout(() => {
@@ -100,6 +200,16 @@
       const mine = valueOf(a);
       study = { lost: Math.max(0, best.v - mine), best, mine };
       g.lost.push(study.lost);
+    }
+    if (g.online) {
+      // The room applies it (and checks it again); the new state comes back as a change.
+      sentAt = g.st.moves;
+      sel = null; showBest = null; renderPlay();
+      net.act(a).then((r) => {
+        if (r.ok) return;
+        sentAt = -1; netErr = r.message; renderPlay(); $('substatus').textContent = netErr;
+      });
+      return;
     }
     const p = g.st.turn;
     g.st = E.apply(g.st, a);
@@ -167,7 +277,9 @@
         extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', 24);
       }
       const isLast = st.last && st.last.x === x && st.last.y === y;
-      s += `<g class="${isLast ? 'placed' : ''}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100, extra)}</g>`;
+      // Drop-in motion plays once per move, not on every redraw.
+      const anim = isLast && animatedAt !== st.moves;
+      s += `<g class="${anim ? 'placed' : ''}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100, extra)}</g>`;
       if (isLast) s += `<rect class="last" x="${x * 100 + 2}" y="${y * 100 + 2}" width="96" height="96" rx="3" stroke="${RD.PLAYER[st.last.p]}"/>`;
     }
     if (isHumanTurn()) {
@@ -196,6 +308,7 @@
       if (showBest) s += `<rect class="best-ring" x="${showBest.x * 100 - 4}" y="${showBest.y * 100 - 4}" width="108" height="108" rx="6"/>`;
     }
     svg.innerHTML = `<g id="world">${s}</g>`;
+    animatedAt = st.moves;
     applyView();
   }
 
@@ -204,7 +317,7 @@
     $('players').innerHTML = g.seats.map((k, i) => `
       <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}">
         <svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
-        <div class="col"><span class="nm">${esc(seatName(i))}${k !== 'you' ? ' · ' + LEVEL_NAME[k] : ''}</span>
+        <div class="col"><span class="nm">${esc(seatName(i))}</span>
         <span class="sc">${st.scores[i]}</span></div>
         <span class="mp" title="Meeples left">${st.meeples[i]}<svg viewBox="0 0 20 20" style="width:11px;height:11px;vertical-align:-1px;margin-left:1px"><use href="#meeple" fill="#969db4"/></svg></span>
       </div>`).join('');
@@ -238,7 +351,7 @@
 
   function renderDock() {
     const g = S.game, st = g.st;
-    $('left').textContent = st.over ? 'Game over' : `${st.bag.length} left in bag`;
+    $('left').textContent = (g.online && netSnap && netSnap.code ? `Room ${netSnap.code} · ` : '') + (st.over ? 'Game over' : `${st.bag.length} left in bag`);
     const status = $('status'), sub = $('substatus');
     const human = isHumanTurn();
     $('btn-rotate').disabled = !human;
@@ -254,7 +367,7 @@
     }
     const lastEv = st.last && st.last.ev.length ? st.last.ev.map(describe).join(' · ') : '';
     if (!human) {
-      status.textContent = `${seatName(st.turn)} is placing…`;
+      status.textContent = g.online && g.seats[st.turn] === 'you' ? 'Sending…' : `${seatName(st.turn)} is placing…`;
       sub.textContent = lastEv;
       return;
     }
@@ -542,6 +655,7 @@
         <div class="set-row"><span class="l">Study mode <button class="q" data-help="study">?</button></span>${sw('study', s.study)}</div>
         <div class="set-row"><span class="muted">Seats and rules start with the next game.</span><button class="btn primary small" id="btn-new">New game</button></div>
       </section>
+      ${renderOnline()}
       <section class="card set-sec"><h3>Rules</h3>
         <div class="set-row"><span class="l">Farmers</span>${sw('farmers', s.farmers)}</div>
         <div class="set-row"><span class="l">Farm scoring <button class="q" data-help="farm">?</button></span>${seg('farm', [['3rd', 'Current'], ['1st', '1st edition']], s.farm)}</div>
@@ -555,8 +669,38 @@
       <section class="card set-sec"><h3>How strong? <button class="q" data-help="strength">?</button></h3>${STRENGTH}</section>
       <section class="set-sec"><a href="../" class="muted">← more board &amp; card games</a></section>`;
   }
+  function renderOnline() {
+    const err = netErr ? `<div class="net-err">${esc(netErr)}</div>` : '';
+    const busy = netBusy ? 'disabled' : '';
+    const sn = netSnap;
+    if (sn && sn.status === 'joining') return `<section class="card set-sec"><h3>Online</h3><div class="set-row"><span class="muted">Waiting for the host to let you in…</span><button class="btn small ghost" id="net-leave">Cancel</button></div>${err}</section>`;
+    if (sn && inRoom()) {
+      const lv = (sn.options && sn.options.levels) || [];
+      const seats = sn.seats.map((s, i) => `<div class="seat">${meepleIcon(i, 22)}<span>${s.kind === 'empty' ? '<span class="muted">Open seat</span>' : esc(s.kind === 'computer' ? LEVEL_NAME[lv[i]] || s.name : s.name)}${i === sn.mySeat ? ' <span class="muted">(you)</span>' : ''}${s.kind === 'human' && !s.online ? ' <span class="muted">· away</span>' : ''}</span></div>`).join('');
+      const lobby = sn.status === 'lobby';
+      return `<section class="card set-sec"><h3>Online <button class="q" data-help="online">?</button></h3>
+        <div class="set-row"><span class="l">Room code</span><span class="net-code">${esc(sn.code || '')}</span></div>
+        ${seats}
+        <div class="set-row"><span class="muted">${lobby ? (sn.isHost ? 'Open seats left at the start become Hard computers.' : 'Waiting for the host to start.') : 'Game on: see Play.'}</span>
+        <span>${lobby && sn.isHost ? `<button class="btn small primary" id="net-start" ${busy}>Start</button> ` : ''}<button class="btn small ghost" id="net-leave">Leave</button></span></div>${err}</section>`;
+    }
+    return `<section class="card set-sec"><h3>Online <button class="q" data-help="online">?</button></h3>
+      <div class="set-row"><span class="l">Your name</span><input class="net-in" id="net-name" maxlength="16" value="${esc(S.set.oname || '')}" placeholder="Name" aria-label="Your name"></div>
+      <div class="set-row"><span class="muted">Uses the seats above</span><button class="btn small primary" id="net-create" ${busy}>Create room</button></div>
+      <div class="set-row"><input class="net-in code" id="net-code" maxlength="5" placeholder="CODE" aria-label="Room code" autocapitalize="characters" autocomplete="off"><button class="btn small" id="net-join" ${busy}>Join</button></div>
+      ${err}</section>`;
+  }
   // Filled from tools/sim.js output (see progress.md for the run).
-  const STRENGTH = `<p class="muted">Not measured yet.</p>`;
+  // Run 2026-10-19: 1000 two-player games per pair, 500 four-player games.
+  const STRENGTH = `<table class="str">
+      <tr><th>Match</th><th>Wins</th><th>Avg points</th></tr>
+      <tr><td>Hard vs Medium</td><td>81%</td><td>112 – 93</td></tr>
+      <tr><td>Hard vs Easy</td><td>98%</td><td>113 – 69</td></tr>
+      <tr><td>Medium vs Easy</td><td>95%</td><td>101 – 72</td></tr>
+      <tr><td>Hard vs 3 Medium</td><td>84%</td><td>71 – 50</td></tr>
+      <tr><td>Medium vs 3 Easy</td><td>70%</td><td>55 – 41</td></tr>
+    </table>
+    <p class="muted" style="margin:8px 0 0">Going first: Hard vs Hard, the first player wins 55.5% (1000 games). With 4 players a fair share is 25%.</p>`;
 
   // ================================================================ sheet + help popup
   function openSheet(html) { $('sheet').innerHTML = html; $('sheet-back').hidden = false; }
@@ -674,12 +818,26 @@
       return;
     }
     if (d.me !== undefined) { S.table.me = +d.me; save(); renderSettings(); return; }
+    // ---- online
+    if (b.id === 'net-create') { createRoom(); return; }
+    if (b.id === 'net-join') {
+      const c = ($('net-code').value || '').trim().toUpperCase();
+      if (c.length !== 5) { netErr = 'Room codes have 5 letters.'; renderSettings(); return; }
+      joinRoom(c); return;
+    }
+    if (b.id === 'net-start') {
+      netBusy = true; renderSettings();
+      net.start().then((r) => { netBusy = false; if (!r.ok) netErr = r.message; if (S.tab === 'settings') renderSettings(); });
+      return;
+    }
+    if (b.id === 'net-leave') { netErr = ''; leaveOnline(); return; }
     if (b.id === 'btn-reset-table') {
       S.table.drawn = []; S.table.scores = S.table.names.map(() => 0); S.table.log = []; S.table.need = [null, null, null, null];
       save(); setTab('tiles'); return;
     }
   });
   document.addEventListener('input', (e) => {
+    if (e.target.id === 'net-name') { S.set.oname = e.target.value.slice(0, 16); save(); return; }
     const i = e.target.dataset && e.target.dataset.name;
     if (i === undefined) return;
     S.table.names[+i] = e.target.value.slice(0, 16) || 'Player ' + (+i + 1);
@@ -699,5 +857,12 @@
   history.replaceState(null, '', '#' + S.tab);
   setTab(S.tab, false);
   if (S.game && !S.game.st.over) tick();
-  self.CarcApp = { get state() { return S; }, newGame, submit, pickCell };
+  // Back into an online room after a reload (only if this browser was in one).
+  function tryResume() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('online.carcassonne')); } catch (e) { saved = null; }
+    if (saved && saved.code && getNet()) net.resume();
+  }
+  if (self.CarcNet) tryResume(); else window.addEventListener('carcnet', tryResume, { once: true });
+  self.CarcApp = { get state() { return S; }, get net() { return netSnap; }, newGame, submit, pickCell };
 })();

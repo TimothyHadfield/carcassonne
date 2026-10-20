@@ -175,7 +175,9 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
   // view() hides the bag order but keeps the counts
   const st = E.newGame({ seed: 3 });
   const v = E.view(st, 0);
-  eq(v.bag.length, 0, 'bag order hidden');
+  eq(v.bag.every((t, i) => i === 0 || v.bag[i - 1] <= t), true, 'bag order hidden (sorted)');
+  eq(v.bag.length, st.bag.length, 'bag size kept');
+  eq(JSON.stringify(v.bag.slice().sort((a, b) => a - b)), JSON.stringify(st.bag.slice().sort((a, b) => a - b)), 'same tiles left');
   eq(v.bagCounts.reduce((a, b) => a + b, 0), st.bag.length, 'bag counts shown');
   const a = E.legalPlacements(st)[0];
   const before = JSON.stringify(st);

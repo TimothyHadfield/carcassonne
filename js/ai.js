@@ -8,7 +8,8 @@
  * computer, so "the best move" always means the same thing.
  *
  * Levels (strength measured by tools/sim.js, see progress.md):
- *   easy   - random legal spot, claims something about half the time
+ *   easy   - the Medium move 60% of the time, otherwise a random spot
+ *   random - random legal spot, claims something half the time (baseline only)
  *   medium - greedy: points now + its own unfinished features, ignores others
  *   hard   - the full evaluation below, farms included
  */
@@ -19,6 +20,8 @@
   const E = node ? require('./engine.js') : self.CarcEngine;
   const TYPES = T.TYPES;
 
+  // Easy plays the Medium move this often and a random spot otherwise.
+  const EASY_SKILL = 0.6;
   const LEVELS = {
     medium: { opp: 0, farms: false, cityPer: 0.5, roadPer: 0.5, meeple: 1.5, flat: true },
     hard: { opp: 1, farms: true, cityPer: 0.58, roadPer: 0.72, meeple: 1, flat: false },
@@ -144,7 +147,12 @@
   function choose(st, level, rand) {
     rand = rand || Math.random;
     const p = st.turn;
-    if (level === 'easy') {
+    if (level === 'easy' && rand() < EASY_SKILL) {
+      const ranked = rankMoves(st, p, 'medium');
+      const m = ranked[0];
+      return { type: 'place', x: m.x, y: m.y, r: m.r, fi: m.fi };
+    }
+    if (level === 'easy' || level === 'random') {
       const L = E.legalPlacements(st);
       const m = L[Math.floor(rand() * L.length)];
       const spots = E.meepleSpotsFor(st, m.x, m.y, st.cur, m.r, p)
