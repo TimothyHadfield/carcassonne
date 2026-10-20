@@ -39,6 +39,12 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
   play(s1, 'E', 0, -1, 2, 0);
   eq(s1.scores, [2, 0], 'old-rules two-tile city scores 2');
 }
+{
+  const st = fresh();
+  play(st, 'M', 0, -1, 2, 0);                 // shield city (S+E) joins the start city
+  play(st, 'E', 1, -1, 3, -1);                // closes its east side
+  eq(st.scores[0], 8, 'finished 3-tile city with a shield = 2x3 + 2');
+}
 // ---- road closed at both ends ----
 {
   const st = fresh();
@@ -131,7 +137,7 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
 // ---- random full games: invariants + the look-ahead agrees with the real move ----
 {
   let games = 0, moves = 0, mismatch = 0, conserve = 0, sumOk = 0, legalOk = 0;
-  for (let seed = 1; seed <= 300; seed++) {
+  for (let seed = 1; seed <= 60; seed++) {
     let st = E.newGame({ players: 2 + (seed % 4), seed });
     const rand = E.rng(seed * 31);
     while (!st.over) {

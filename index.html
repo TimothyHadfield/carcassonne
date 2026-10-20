@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Carcassonne</title>
+<meta name="description" content="Carcassonne: play the computer with expected-points hints, or track tiles and scores at a real table.">
+<meta name="theme-color" content="#0f1117">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" id="defs-host"></svg>
+
+<div class="app">
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button data-tab="play" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/><path d="M13 13h7v7h-7z" class="dim"/></svg><span>Play</span></button>
+    <button data-tab="tiles"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M17 13v8M13 17h8"/></svg><span>Tiles</span></button>
+    <button data-tab="scores"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>Scores</span></button>
+    <button data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Settings</span></button>
+  </nav>
+
+  <!-- ========================= PLAY (vs computer) ========================= -->
+  <main class="view" id="view-play">
+    <div class="players" id="players"></div>
+    <div class="board-wrap" id="board-wrap">
+      <svg id="board" class="board"></svg>
+      <div class="board-tools">
+        <button id="zoom-in" aria-label="Zoom in">+</button>
+        <button id="zoom-out" aria-label="Zoom out">&minus;</button>
+        <button id="zoom-fit" aria-label="Fit board">Fit</button>
+      </div>
+      <div class="floaters" id="floaters"></div>
+    </div>
+    <aside class="dock" id="dock">
+      <div class="hand-box">
+        <div class="hand" id="hand" aria-label="Your tile"></div>
+        <div class="left" id="left"></div>
+      </div>
+      <div class="dock-main">
+        <div class="status" id="status"></div>
+        <div class="sub" id="substatus"></div>
+        <div class="dock-btns">
+          <button class="btn" id="btn-rotate">Rotate</button>
+          <button class="btn" id="btn-hint">Hint</button>
+          <button class="btn primary" id="btn-place" disabled>Place</button>
+        </div>
+      </div>
+      <div class="side-extra" id="side-extra"></div>
+    </aside>
+  </main>
+
+  <!-- ========================= TILES (real table) ========================= -->
+  <main class="view" id="view-tiles" hidden>
+    <div class="tt-head">
+      <div class="big-num"><b id="tt-left">71</b><span>tiles left</span></div>
+      <div class="tt-next"><span class="lbl">Next draw</span><b id="tt-next">—</b></div>
+      <button class="btn small" id="tt-undo">Undo</button>
+    </div>
+    <div class="tt-body">
+      <section class="need card">
+        <div class="need-pick" id="need-pick" aria-label="Sides of the hole you want to fill">
+          <button data-side="0" class="ns n"></button><button data-side="1" class="ns e"></button>
+          <button data-side="2" class="ns s"></button><button data-side="3" class="ns w"></button>
+          <div class="need-mid" id="need-mid"></div>
+        </div>
+        <div class="need-out" id="need-out"></div>
+      </section>
+      <section class="tgrid-wrap">
+        <div class="hint-line">Tap a tile when it's drawn <button class="q" data-help="tap">?</button></div>
+        <div class="tgrid" id="tgrid"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ========================= SCORES (real table) ========================= -->
+  <main class="view" id="view-scores" hidden>
+    <div class="sc-wrap">
+      <section class="sc-list card" id="sc-list"></section>
+      <section class="sc-add card" id="sc-add"></section>
+      <section class="sc-log card"><h3>History</h3><ul id="sc-log"></ul></section>
+    </div>
+  </main>
+
+  <!-- ========================= SETTINGS ========================= -->
+  <main class="view" id="view-settings" hidden>
+    <div class="set-wrap" id="settings"></div>
+  </main>
+</div>
+
+<div class="sheet-back" id="sheet-back" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="pop" id="pop" hidden></div>
+
+<script src="js/tiles.js?v=1"></script>
+<script src="js/engine.js?v=1"></script>
+<script src="js/ai.js?v=1"></script>
+<script src="js/odds.js?v=1"></script>
+<script src="js/render.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+</body>
+</html>
