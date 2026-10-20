@@ -68,9 +68,12 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .pchip .mp { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pchip .col { display: flex; flex-direction: column; min-width: 0; }
 .pchip .mp { white-space: nowrap; }
+/* Crowded rows (5-6 players, or a big meeple to show): meeples go on their own line */
+.players.stack .pchip { flex-wrap: wrap; justify-content: center; gap: 2px 6px; }
+.players.stack .pchip .mp { flex-basis: 100%; text-align: center; }
 /* 5-6 players on a phone: colour + score + meeples, no name (Results has names) */
 @media (max-width: 899px) {
-  .players.many .pchip { flex-wrap: wrap; justify-content: center; gap: 2px 4px; padding: 4px 4px; }
+  .players.many .pchip { gap: 2px 4px; padding: 4px 4px; }
   .players.many .pchip .nm { display: none; }
   .players.many .pchip > svg { width: 16px; height: 16px; }
   .players.many .pchip .mp { flex-basis: 100%; text-align: center; font-size: 10.5px; }
@@ -159,7 +162,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .need-out .row b { color: var(--text); font-variant-numeric: tabular-nums; }
 .tgrid-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
 .hint-line { font-size: 12.5px; color: var(--muted); }
-.tgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; overflow-y: auto; align-content: start; padding: 2px; }
+.tgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; overflow-y: auto; align-content: start; padding: 6px 5px 2px 2px; }
 .tbtn { position: relative; aspect-ratio: 1; border-radius: 6px; transition: transform .1s, opacity .2s, box-shadow .2s; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
 .tbtn svg { width: 100%; height: 100%; display: block; border-radius: 6px; }
 .tbtn:active { transform: scale(.93); }

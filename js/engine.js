@@ -268,7 +268,7 @@
   function cityPoints(st, tiles, sh, complete, cat) {
     if (cat) return complete ? 3 * tiles + 3 * sh : 0;
     if (!complete) return tiles + sh;
-    if (tiles === 2 && st.opts.smallCity === 2) return 2 + 2 * sh;
+    if (tiles === 2 && st.opts.smallCity === 2) return 2 + sh;   // old rule: 1 per tile and 1 per shield
     return 2 * tiles + 2 * sh;
   }
   // inn: the road has an inn (2 per tile when finished, 0 if not).

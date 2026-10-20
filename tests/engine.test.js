@@ -39,6 +39,9 @@ eq(roadSides, 94, 'road edges across the set (hand-counted from the tile list)')
   const s1 = fresh({ smallCity: 2 });
   play(s1, 'E', 0, -1, 2, 0);
   eq(s1.scores, [2, 0], 'old-rules two-tile city scores 2');
+  // Old rule: 1 per tile and 1 per shield, so a 2-tile city with a shield is 3.
+  eq(E.cityPoints(s1, 2, 1, true, false), 3, 'old-rules two-tile city with a shield scores 3');
+  eq(E.cityPoints(st, 2, 1, true, false), 6, 'current-rules two-tile city with a shield scores 6');
 }
 {
   const st = fresh();

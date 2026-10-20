@@ -72,6 +72,7 @@
       if (moved) {
         g.race.push(g.st.scores.slice());
         if (g.st.last) for (const e of g.st.last.ev) g.log.push({ ...e, by: g.st.last.p });
+        logFinal(g);
         sel = null; handR = 0; showBest = null;
       }
       if (S.tab === 'play') { renderPlay(); if (moved && g.st.last) floatEvents(g.st.last.ev); }
@@ -122,7 +123,7 @@
     farm: 'Current rules: each farm scores 3 for every finished city it touches. First edition: each finished city pays 4 to whoever has the most farmers in all the farms touching it.',
     river: 'The River expansion: the game starts from the spring and the 12 river tiles are laid first, one per turn, ending with the lake. A river may not turn the same way twice in a row (no U-turns). Meeples can go on the land beside the river, never on the water.',
     ic: 'Inns & Cathedrals: 18 more tiles. A road with an inn scores 2 per tile when finished but nothing if unfinished at the end; a city with a cathedral scores 3 per tile and shield, or nothing if unfinished. Each player also gets one big meeple that counts as two (tap a circle twice to use it). Up to 6 players.',
-    small: 'Current rules: a finished 2-tile city is worth 4 like any other city (2 per tile). Before 2004 (first editions) it was only worth 2.',
+    small: 'Current rules: a finished 2-tile city is worth 4 like any other city (2 per tile). Before 2004 (first editions) it was only worth 2 (1 per tile, plus 1 per shield).',
     strength: 'Measured by letting the computers play thousands of full games against each other with the same tile bags and seats swapped. The table shows how often the row player wins.',
     online: 'Create a room and friends type its 5-letter code on their own phone to join. Every "You" seat above becomes a seat for a person; computer seats stay computers. Your phone runs the game and the computers, so keep this page open until the game ends. Free: no account needed.',
     tally: 'Pick what was scored, set its size, then tap each player once for every meeple they have on it. Whoever has the most gets the points; ties all score.',
@@ -181,7 +182,8 @@
     if (!g) return;
     if (g.st.over) {
       renderPlay();
-      if (g.shown !== g.st.moves) { g.shown = g.st.moves; setTimeout(showFinal, 700); }
+      // Only counts as shown once the Play tab is open, so ending on another tab still shows it later.
+      if (g.shown !== g.st.moves && S.tab === 'play') { g.shown = g.st.moves; setTimeout(showFinal, 700); }
       return;
     }
     if (isHumanTurn() || g.online) { renderPlay(); return; }   // online: the host's browser runs the computers
@@ -218,6 +220,7 @@
     g.race.push(g.st.scores.slice());
     const evs = g.st.last.ev.map((e) => ({ ...e, by: p }));
     for (const e of evs) g.log.push(e);
+    logFinal(g);
     sel = null; handR = 0; showBest = null;
     save();
     renderPlay();
@@ -317,6 +320,7 @@
   function renderPlayers() {
     const g = S.game, st = g.st;
     $('players').classList.toggle('many', g.seats.length >= 5);
+    $('players').classList.toggle('stack', g.seats.length >= 5 || (st.opts.ic && g.seats.length >= 3));
     $('players').innerHTML = g.seats.map((k, i) => `
       <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}">
         <svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
@@ -346,10 +350,16 @@
     el.innerHTML = RD.tileSVG(st.cur, r, extra);
   }
 
+  // End-of-game scoring (farms, unfinished features) goes into the log once.
+  function logFinal(g) {
+    if (!g.st.over || !g.st.final || g.loggedFinal) return;
+    g.loggedFinal = true;
+    for (const e of g.st.final) g.log.push({ ...e, end: true });
+  }
   function describe(e) {
     const who = e.who.map((p) => seatName(p)).join(' + ');
     const what = { city: 'city', road: 'road', cloister: 'monastery', farm: 'farm' }[e.kind];
-    return `${who}: ${what} +${e.pts}`;
+    return `${who}: ${what} +${e.pts}${e.end ? ' (end)' : ''}`;
   }
 
   function renderDock() {
@@ -599,7 +609,7 @@
   let tally = { tiles: 2, shields: 0, cities: 1, n: 9, pts: 1, m: [] };
   function tallyPoints() {
     const k = S.table.kind, t = tally;
-    if (k === 'cityDone') return t.tiles === 2 && S.set.smallCity === 2 ? 2 + 2 * t.shields : 2 * t.tiles + 2 * t.shields;
+    if (k === 'cityDone') return t.tiles === 2 && S.set.smallCity === 2 ? 2 + t.shields : 2 * t.tiles + 2 * t.shields;
     if (k === 'cityOpen') return t.tiles + t.shields;
     if (k === 'road') return t.tiles;
     if (k === 'cloister') return t.n;
@@ -730,6 +740,7 @@
     for (const v of ['play', 'tiles', 'scores', 'settings']) $('view-' + v).hidden = v !== t;
     if (push !== false && location.hash !== '#' + t) history.pushState(null, '', '#' + t);
     render();
+    if (t === 'play' && S.game && S.game.st.over) tick();
   }
   function render() {
     if (S.tab === 'play') { renderPlay(); }
