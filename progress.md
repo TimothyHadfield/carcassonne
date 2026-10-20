@@ -32,6 +32,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - `js/net.js` is an ES module that hands `createOnline` to the plain-script app via `self.CarcNet` and a `carcnet` event.
 - Online: after sending a move the UI blocks until `st.moves` changes (`sentAt`), or a fast second tap sends a double move.
 - The online public view sorts the bag so order stays secret; `privateView` is empty (nothing else is hidden).
+- The results sheet is marked shown only while the Play tab is open (`g.shown`); end-of-game events go into `g.log` once (`g.loggedFinal`).
 - Results sheet appears about 2 s after the last tile in WebKit; screenshot scripts must wait.
 - River tiles that cannot be placed are set aside (about 1 in 60 computer games).
 - Strength sims: `node tools/sim.js` (slow; 1000 games takes minutes).

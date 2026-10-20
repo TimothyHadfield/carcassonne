@@ -25,7 +25,7 @@ Sources:
 | One meeple per turn, only on the tile just placed, not on an occupied feature | WP, BGA | OK | engine |
 | Finished road | 1 per tile | WP, BGA | OK | engine |
 | Finished city | 2 per tile + 2 per shield | WP, BGA | OK | engine |
-| Two-tile city | 4 (current) or 2 (old rule, setting) | CAR, BGA | choice: default 4 | engine both |
+| Two-tile city | 4 (current) or old rule (setting): 1 per tile + 1 per shield, so 2 or 3 | CAR, BGA | choice: default 4 | engine both |
 | Finished cloister | 9 (itself + 8 around) | WP, BGA | OK | engine |
 | Majority | most meeples score; ties all score full | WP, BGA | OK | engine |
 | Meeples come home when finished | WP, BGA | OK | engine |
