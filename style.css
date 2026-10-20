@@ -104,7 +104,10 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   width: 42px; height: 42px; border-radius: 10px; background: rgba(26,30,43,.88); border: 1px solid var(--line);
   font-weight: 700; font-size: 18px; color: var(--muted);
 }
-.board-tools #zoom-fit { font-size: 13px; }
+.board-tools #zoom-fit { font-size: 13px; opacity: .45; transition: opacity .15s, color .15s, border-color .15s; }
+.board-tools #zoom-fit.lit { opacity: 1; color: var(--accent); border-color: var(--accent); }
+/* Phone on its side: the board is too short for the column, so the buttons sit in a row. */
+@media (orientation: landscape) and (max-height: 500px) { .board-tools { flex-direction: row; } }
 .board-tools button:active { transform: scale(.94); background: var(--card-hover); }
 .floaters { position: absolute; inset: 0; pointer-events: none; }
 .floater {

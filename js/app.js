@@ -237,20 +237,53 @@
     }
     return { x0: x0 - 1, x1: x1 + 1, y0: y0 - 1, y1: y1 + 1 };
   }
-  function fit() {
+  // One zoom only: auto mode fits the whole board (tiles + every empty spot the
+  // tile could go) in the board area. Pinch / wheel / + leave auto mode;
+  // Fit, double-tap on empty board, or zooming back out to the fit return to it.
+  const AUTO_MAX = 1.5;   // a 1-tile board shouldn't fill the screen
+  function fitBox() {
     const svg = $('board'), W = svg.clientWidth, H = svg.clientHeight;
-    if (!W || !H || !S.game) return;
+    if (!W || !H || !S.game) return null;
     const b = bounds(S.game.st);
     const w = (b.x1 - b.x0 + 1) * 100, h = (b.y1 - b.y0 + 1) * 100;
-    const max = W < 600 ? 0.78 : 1.05;
-    vs.s = Math.min(max, (W - 16) / w, (H - 16) / h);
-    vs.tx = W / 2 - vs.s * ((b.x0 + b.x1 + 1) * 50);
-    vs.ty = H / 2 - vs.s * ((b.y0 + b.y1 + 1) * 50);
+    const s = Math.min(AUTO_MAX, (W - 16) / w, (H - 16) / h);
+    return { s, tx: W / 2 - s * ((b.x0 + b.x1 + 1) * 50), ty: H / 2 - s * ((b.y0 + b.y1 + 1) * 50), W, H,
+      bx0: b.x0 * 100, bx1: (b.x1 + 1) * 100, by0: b.y0 * 100, by1: (b.y1 + 1) * 100 };
   }
-  function applyView() {
+  function fit() {
+    const f = fitBox();
+    if (!f) return;
+    vs.s = f.s; vs.tx = f.tx; vs.ty = f.ty;
+  }
+  const maxZoom = () => { const f = fitBox(); return Math.max(2.5, (f ? f.s : 1) * 2); };
+  // Manual mode: never smaller than the fit, and the board can't be dragged off-screen.
+  function clampView() {
+    const f = fitBox();
+    if (!f) return;
+    if (vs.s <= f.s * 1.001) { vs.user = false; fit(); return; }
+    const m = 8;
+    const lim = (t, a0, a1, size) => {
+      const lo = Math.min(size - m - vs.s * a1, m - vs.s * a0), hi = Math.max(size - m - vs.s * a1, m - vs.s * a0);
+      return Math.max(lo, Math.min(hi, t));
+    };
+    vs.tx = lim(vs.tx, f.bx0, f.bx1, f.W);
+    vs.ty = lim(vs.ty, f.by0, f.by1, f.H);
+  }
+  let shown = null;       // the transform on screen, so a redrawn board glides from it
+  function applyView(instant) {
     const w = $('world');
-    if (w) w.style.transform = `translate(${vs.tx}px, ${vs.ty}px) scale(${vs.s})`;
+    const fb = $('zoom-fit');
+    if (fb) fb.classList.toggle('lit', vs.user);
+    if (!w) return;
+    const t = `translate(${vs.tx}px, ${vs.ty}px) scale(${vs.s})`;
+    const svg = $('board'), jump = instant || !shown;
+    if (jump) svg.classList.add('dragging');
+    else void w.getBoundingClientRect();   // a freshly drawn #world: let its start point register first
+    w.style.transform = t;
+    shown = t;
+    if (jump) { void w.getBoundingClientRect(); svg.classList.remove('dragging'); }
   }
+  function toAuto() { vs.user = false; fit(); applyView(); }
   function scaleLabel(v, lo, hi) {
     const t = hi - lo < 1e-6 ? 1 : (v - lo) / (hi - lo);
     return `hsl(${Math.round(t * 120)}, 75%, 62%)`;
@@ -314,7 +347,9 @@
       } else spinFrom('ghost', '', 0);
       if (showBest && !(sel && sel.x === showBest.x && sel.y === showBest.y)) s += `<rect class="best-ring" x="${showBest.x * 100 - 4}" y="${showBest.y * 100 - 4}" width="108" height="108" rx="6"/>`;
     }
-    svg.innerHTML = `<g id="world">${s}</g>`;
+    // The new board starts where the old one is right now (even mid-glide), so redraws never jump.
+    const old = $('world'), from = old ? getComputedStyle(old).transform : '';
+    svg.innerHTML = `<g id="world"${from && from !== 'none' ? ` style="transform:${from}"` : ''}>${s}</g>`;
     animatedAt = st.moves;
     applyView();
   }
@@ -438,7 +473,7 @@
   function renderPlay(refit) {
     if (!S.game) { newGame(); return; }
     renderPlayers();
-    if (refit || !vs.user) fit();
+    if (refit || !vs.user) { vs.user = false; fit(); } else clampView();
     renderBoard();
     renderHand();
     renderDock();
@@ -492,14 +527,14 @@
   (function boardInput() {
     const svg = $('board');
     const pts = new Map();
-    let start = null, moved = false, pinch = null;
+    let start = null, moved = false, pinch = null, lastTap = null;
     svg.addEventListener('pointerdown', (e) => {
-      svg.setPointerCapture(e.pointerId);
+      try { svg.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or already gone */ }
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 1) { start = { x: e.clientX, y: e.clientY, tx: vs.tx, ty: vs.ty }; moved = false; }
       if (pts.size === 2) {
         const [a, b] = [...pts.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: vs.s, tx: vs.tx, ty: vs.ty, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: vs.s, tx: vs.tx, ty: vs.ty, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
         moved = true;
       }
     });
@@ -510,45 +545,72 @@
       if (pts.size === 2 && pinch) {
         const [a, b] = [...pts.values()];
         const k = Math.hypot(a.x - b.x, a.y - b.y) / pinch.d;
-        zoomAt(pinch.cx - rect.left, pinch.cy - rect.top, Math.max(0.12, Math.min(2, pinch.s * k)), pinch);
+        zoomAt(pinch.cx - rect.left, pinch.cy - rect.top, pinch.s * k, pinch);
         return;
       }
-      if (!start) return;
+      if (!start || pts.size !== 1) return;
       const dx = e.clientX - start.x, dy = e.clientY - start.y;
-      if (!moved && Math.hypot(dx, dy) > 7) { moved = true; svg.classList.add('dragging'); }
-      if (moved) { vs.tx = start.tx + dx; vs.ty = start.ty + dy; vs.user = true; applyView(); }
+      if (!moved && Math.hypot(dx, dy) > 7) { moved = true; start = { x: e.clientX, y: e.clientY, tx: vs.tx, ty: vs.ty }; return; }
+      // Auto mode: one finger never moves the board. Zoomed in: drag pans (clamped).
+      if (moved && vs.user) { vs.tx = start.tx + e.clientX - start.x; vs.ty = start.ty + e.clientY - start.y; clampView(); applyView(true); }
     });
     function end(e) {
       if (!pts.has(e.pointerId)) return;
       pts.delete(e.pointerId);
       if (pts.size < 2) pinch = null;
+      if (pts.size === 1) { const [p] = [...pts.values()]; start = { x: p.x, y: p.y, tx: vs.tx, ty: vs.ty }; }
       if (pts.size === 0) {
-        svg.classList.remove('dragging');
-        if (!moved && start) tapAt(e.clientX, e.clientY);
+        if (!moved && start) tap(e.clientX, e.clientY);
         start = null;
       }
+    }
+    // A tap picks a spot; a quick second tap away from any spot goes back to auto.
+    function tap(cx, cy) {
+      const now = Date.now();
+      const twice = lastTap && now - lastTap.t < 350 && Math.hypot(cx - lastTap.x, cy - lastTap.y) < 30;
+      if (twice && vs.user && !spotAt(cx, cy)) { lastTap = null; toAuto(); return; }
+      lastTap = { t: now, x: cx, y: cy };
+      tapAt(cx, cy);
     }
     svg.addEventListener('pointerup', end);
     svg.addEventListener('pointercancel', end);
     svg.addEventListener('wheel', (e) => {
       e.preventDefault();
       const rect = svg.getBoundingClientRect();
-      zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.max(0.12, Math.min(2, vs.s * (e.deltaY < 0 ? 1.12 : 1 / 1.12))));
+      // Trackpad pinch arrives as ctrl+wheel with small steps; a mouse wheel as bigger ones.
+      const k = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * (e.ctrlKey ? 0.01 : 0.0025));
+      zoomAt(e.clientX - rect.left, e.clientY - rect.top, vs.s * k);
     }, { passive: false });
     function zoomAt(px, py, ns, from) {
       const f = from || vs;
       const wx = (px - f.tx) / f.s, wy = (py - f.ty) / f.s;
+      ns = Math.min(maxZoom(), ns);
       vs.s = ns; vs.tx = px - wx * ns; vs.ty = py - wy * ns; vs.user = true;
-      svg.classList.add('dragging'); applyView(); svg.classList.remove('dragging');
+      clampView(); applyView(true);
     }
-    $('zoom-in').onclick = () => { const r = svg.getBoundingClientRect(); vs.user = true; zoomStep(r, 1.25); };
-    $('zoom-out').onclick = () => { const r = svg.getBoundingClientRect(); vs.user = true; zoomStep(r, 0.8); };
-    $('zoom-fit').onclick = () => { vs.user = false; fit(); applyView(); };
-    function zoomStep(r, k) {
-      const px = r.width / 2, py = r.height / 2, wx = (px - vs.tx) / vs.s, wy = (py - vs.ty) / vs.s;
-      vs.s = Math.max(0.12, Math.min(2, vs.s * k)); vs.tx = px - wx * vs.s; vs.ty = py - wy * vs.s; applyView();
+    $('zoom-in').onclick = () => zoomStep(1.25);
+    $('zoom-out').onclick = () => zoomStep(0.8);
+    $('zoom-fit').onclick = toAuto;
+    function zoomStep(k) {
+      const px = svg.clientWidth / 2, py = svg.clientHeight / 2, wx = (px - vs.tx) / vs.s, wy = (py - vs.ty) / vs.s;
+      vs.s = Math.min(maxZoom(), vs.s * k); vs.tx = px - wx * vs.s; vs.ty = py - wy * vs.s; vs.user = true;
+      clampView(); applyView();
     }
+    // The board area changes size (rotation, toolbar, panels): auto re-fits, manual stays in bounds.
+    if (self.ResizeObserver) new ResizeObserver(() => {
+      if (S.tab !== 'play' || !S.game || !svg.clientWidth) return;
+      if (vs.user) clampView(); else fit();
+      applyView();
+    }).observe(svg);
   })();
+
+  function spotAt(cx, cy) {
+    const st = S.game && S.game.st;
+    if (!st || st.over || !isHumanTurn()) return false;
+    const rect = $('board').getBoundingClientRect();
+    const x = Math.floor((cx - rect.left - vs.tx) / vs.s / 100), y = Math.floor((cy - rect.top - vs.ty) / vs.s / 100);
+    return legalRots(x, y).length > 0;
+  }
 
   function tapAt(cx, cy) {
     if (!isHumanTurn()) return;
@@ -748,6 +810,7 @@
 
   // ================================================================ tabs + events
   function setTab(t, push) {
+    if (t === 'play' && S.tab !== 'play') vs.user = false;   // back on the board: auto fit
     S.tab = t; save();
     document.querySelectorAll('#tabs button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === t));
     document.querySelectorAll('#tabs button').forEach((b) => { if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); });
