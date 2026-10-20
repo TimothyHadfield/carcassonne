@@ -279,7 +279,7 @@
       let extra = '';
       if (tl.m) {
         const f = T.TYPES[tl.t].rot[tl.r].feats[tl.m[1]];
-        extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? 34 : 24);
+        extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? 44 : 32);
       }
       const isLast = st.last && st.last.x === x && st.last.y === y;
       // Drop-in motion plays once per move, not on every redraw.
@@ -296,7 +296,8 @@
         const [x, y] = k.split(',').map(Number);
         const on = sel && sel.x === x && sel.y === y;
         if (on) continue;
-        s += `<g class="cand" data-x="${x}" data-y="${y}"><rect x="${x * 100 + 5}" y="${y * 100 + 5}" width="90" height="90" rx="8"/>`;
+        const top = S.set.hints && hi - best[k] < 0.05;   // the best square(s) get a solid outline
+        s += `<g class="cand${top ? ' top' : ''}" data-x="${x}" data-y="${y}"><rect x="${x * 100 + 5}" y="${y * 100 + 5}" width="90" height="90" rx="8"/>`;
         if (S.set.hints) s += `<text x="${x * 100 + 50}" y="${y * 100 + 52}" fill="${scaleLabel(best[k], lo, hi)}">${fmt(best[k])}</text>`;
         s += '</g>';
       }
@@ -306,11 +307,12 @@
       }
       if (sel) {
         const f = sel.fi >= 0 ? T.TYPES[st.cur].rot[sel.r].feats[sel.fi] : null;
-        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? 34 : 24) : '';
-        s += `<g class="ghost">${RD.tile(st.cur, sel.r, sel.x * 100, sel.y * 100, 100, extra)}</g>`;
+        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? 44 : 32) : '';
+        const turn = spinFrom('ghost', sel.x + ',' + sel.y, sel.r);
+        s += `<g class="ghost${turn ? ' spin' : ''}" style="--from:${turn}deg">${RD.tile(st.cur, sel.r, sel.x * 100, sel.y * 100, 100, extra)}</g>`;
         s += `<rect class="ghost-ring" x="${sel.x * 100}" y="${sel.y * 100}" width="100" height="100" rx="3"/>`;
-      }
-      if (showBest) s += `<rect class="best-ring" x="${showBest.x * 100 - 4}" y="${showBest.y * 100 - 4}" width="108" height="108" rx="6"/>`;
+      } else spinFrom('ghost', '', 0);
+      if (showBest && !(sel && sel.x === showBest.x && sel.y === showBest.y)) s += `<rect class="best-ring" x="${showBest.x * 100 - 4}" y="${showBest.y * 100 - 4}" width="108" height="108" rx="6"/>`;
     }
     svg.innerHTML = `<g id="world">${s}</g>`;
     animatedAt = st.moves;
@@ -343,11 +345,23 @@
         const [x, y] = R.feats[fi].spot;
         const on = sel.fi === fi;
         extra += `<g class="spot ${on ? 'on' : ''}" data-fi="${fi}"><circle cx="${x}" cy="${y}" r="15" fill="transparent"/>` +
-          (on ? RD.meeple(st.turn, x, y, R.feats[fi].type === 'field', sel.big ? 31 : 22) : '') +
-          `<circle class="ring" cx="${x}" cy="${y}" r="${on ? 13 : 8}"/></g>`;
+          (on ? RD.meeple(st.turn, x, y, R.feats[fi].type === 'field', sel.big ? 34 : 25) : '') +
+          `<circle class="halo" cx="${x}" cy="${y}" r="${on ? 14 : 8}"/><circle class="ring" cx="${x}" cy="${y}" r="${on ? 14 : 8}"/></g>`;
       }
     }
     el.innerHTML = RD.tileSVG(st.cur, r, extra);
+    const turn = spinFrom('hand', st.moves + ':' + st.cur, r);
+    if (turn) { const svg = el.firstChild; svg.style.setProperty('--from', turn + 'deg'); svg.classList.add('spin'); }
+  }
+
+  // Turning a tile animates the quarter turn instead of jumping: returns the
+  // start angle (negative degrees) when `r` changed for the same tile and place.
+  const spun = {};
+  function spinFrom(key, where, r) {
+    const was = spun[key];
+    spun[key] = { where, r };
+    if (!was || was.where !== where || was.r === r || !where) return 0;
+    return -((r - was.r + 4) % 4) * 90;
   }
 
   // End-of-game scoring (farms, unfinished features) goes into the log once.
@@ -458,16 +472,16 @@
       <td>${st.bd[i].city}</td><td>${st.bd[i].road}</td><td>${st.bd[i].cloister}</td><td>${st.bd[i].farm}</td><td class="tot">${st.scores[i]}</td></tr>`).join('');
     // Score race chart
     const W = 440, H = 130, n = g.race.length - 1 || 1, max = Math.max(10, ...g.race.flat());
-    const lines = g.seats.map((_, p) => {
+    const lines = `<line x1="5" x2="${W - 5}" y1="${H - 6}" y2="${H - 6}" stroke="#2a3042"/>` + g.seats.map((_, p) => {
       const pts = g.race.map((sc, i) => `${(i / n * (W - 10) + 5).toFixed(1)},${(H - 6 - sc[p] / max * (H - 16)).toFixed(1)}`).join(' ');
-      return `<polyline points="${pts}" fill="none" stroke="${p === 4 ? '#c9ccd6' : RD.PLAYER[p]}" stroke-width="2.5" stroke-linejoin="round"/>`;
+      return `<polyline points="${pts}" fill="none" stroke="${p === 4 ? '#c9ccd6' : RD.PLAYER[p]}" stroke-width="3" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
     }).join('');
     const finalAt = g.race.length - 1;
     const lost = g.lost.length ? `<p class="muted">Study: you gave up <b>${g.lost.reduce((a, b) => a + b, 0).toFixed(1)}</b> expected points over ${g.lost.length} moves.</p>` : '';
     openSheet(`<div class="final">
       <h2>${esc($('status').textContent)}</h2>
       <p class="muted">Farms and unfinished features were scored at the end.</p>
-      <table><tr><th></th><th>City</th><th>Road</th><th>Monastery</th><th>Farm</th><th>Total</th></tr>${rows}</table>
+      <table><colgroup><col style="width:28%"><col style="width:13%"><col style="width:13%"><col style="width:20%"><col style="width:13%"><col style="width:13%"></colgroup><tr><th></th><th>City</th><th>Road</th><th>Monastery</th><th>Farm</th><th>Total</th></tr>${rows}</table>
       <svg class="race" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="${(finalAt - 1) / n * (W - 10) + 5}" x2="${(finalAt - 1) / n * (W - 10) + 5}" y1="0" y2="${H}" stroke="#2a3042" stroke-dasharray="3 4"/>${lines}</svg>
       <p class="muted" style="margin-top:-4px">Score after each tile; the jump at the end is farms and unfinished features.</p>
       ${lost}
