@@ -53,62 +53,81 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .q:hover { color: var(--text); border-color: var(--muted); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
 
-/* ================================================================ PLAY */
-#view-play { display: flex; flex-direction: column; }
+/* ================================================================ PLAY: a real table seen from your seat */
+/* The whole Play screen is a dark wooden table (css/table.css). Far side: the other
+   players' score plates + meeples, and the face-down tile stack. Middle: the tile map.
+   Your edge: the tile in your hand, your meeples, then the turn text and buttons. */
+#view-play { display: flex; flex-direction: column; --wood-ink: #f3ead8; --wood-mute: rgba(243,234,216,.68); color: var(--wood-ink); }
 #view-play[hidden] { display: none; }
-.players { display: flex; gap: 6px; padding: 8px 10px 6px; overflow-x: auto; scrollbar-width: none; flex: none; }
-.players::-webkit-scrollbar { display: none; }
-.pchip {
-  display: flex; align-items: center; gap: 7px; padding: 5px 10px 5px 7px; border-radius: 10px;
-  background: var(--card); border: 1px solid var(--line); flex: 1 1 0; min-width: 0; transition: border-color .2s, background .2s;
+.far { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; flex: none; }
+.players { display: flex; gap: 6px; flex: 1; min-width: 0; }
+.pchip { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.pchip .plate {
+  display: flex; align-items: center; gap: 5px; width: 100%; max-width: 170px; padding: 3px 8px 3px 5px; border-radius: 5px;
+  background: linear-gradient(#3b2a1a, #24180d); border: 1px solid #7a5a2e; color: #f6efdc;
+  box-shadow: inset 0 1px 0 rgba(255,220,150,.22), 0 2px 4px rgba(0,0,0,.45); transition: border-color .2s, box-shadow .2s;
 }
-.pchip.turn { border-color: var(--warm); background: #241f17; }
-.pchip svg { width: 20px; height: 20px; flex: none; }
-.pchip .nm { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
-.pchip .sc { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05; }
-.pchip .mp { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.pchip .col { display: flex; flex-direction: column; min-width: 0; }
-.pchip .mp { white-space: nowrap; }
-/* Crowded rows (5-6 players, or a big meeple to show): meeples go on their own line */
-.players.stack .pchip { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "i c" "m m"; gap: 2px 5px; padding: 5px 6px 5px 5px; }
-.players.stack .pchip > svg { grid-area: i; }
-.players.stack .pchip .col { grid-area: c; }
-.players.stack .pchip .mp { grid-area: m; text-align: center; }
-/* 5-6 players on a phone: colour + score + meeples, no name (Results has names) */
+.pchip.turn .plate { border-color: #f0c35a; box-shadow: 0 0 0 2px rgba(240,195,90,.45), 0 2px 4px rgba(0,0,0,.45); }
+.pchip .plate svg { width: 18px; height: 18px; flex: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+.pchip .nm { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: rgba(246,239,220,.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
+.pchip .sc { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.sup { display: flex; justify-content: center; align-items: flex-end; height: 15px; padding-left: 3px; }
+.sup .tbl-meeple { margin-left: 0; }   /* a little apart, so they read as pieces, not a star rating */
+/* The kit's drop-shadow filter on 20-30 masked meeples drops WebKit to ~2 frames a second
+   (measured); a plain shadow ellipse under each one looks the same and costs nothing. */
+#view-play .tbl-meeple { filter: none; }
+#view-play .tbl-meeple::after { content: ""; position: absolute; left: 12%; right: -8%; bottom: -2px; height: 4px; border-radius: 50%; background: rgba(0,0,0,.45); z-index: -1; }
+.sup .none { font-size: 10.5px; color: var(--wood-mute); }
+/* 5-6 players on a phone: colour + score, meeples packed tighter, no name (Results has names) */
 @media (max-width: 899px) {
-  .players.many .pchip { gap: 2px 4px; padding: 4px 4px; }
   .players.many .pchip .nm { display: none; }
-  .players.many .pchip > svg { width: 16px; height: 16px; }
-  .players.many .pchip .mp { font-size: 10.5px; }
+  .players.many .pchip .plate { justify-content: space-between; padding: 3px 5px 3px 3px; gap: 2px; }
+  .players.many .sup .tbl-meeple { margin-left: -3px; }
 }
+/* the face-down tile stack */
+.stack-box { flex: none; padding: 10px 6px 4px 0; display: flex; align-items: flex-end; gap: 6px; }
+.deck2 { rotate: -6deg; margin-right: -12px; translate: 0 -3px; }   /* a second stack, half behind the first */
+@media (max-width: 899px) { .deck { --card-w: 34px; } }
+.deck2.is-empty { visibility: hidden; }   /* (the stack rises by its thickness) */
+.deck { --card-w: 40px; --ratio: 1 / 1; display: block; }
+.deck .tbl-back, .tile-back {
+  --back: #4b3a27; --back-frame: #4b3a27; --ink: rgba(255,226,170,.07); border-radius: 3px; border-color: rgba(0,0,0,.45);
+}
+.deck .tbl-back::after { content: ""; position: absolute; inset: 28%; border-radius: 50%; border: 1.5px solid rgba(255,226,170,.22); }
+.deck.is-empty { border-radius: 3px; border-color: rgba(255,240,210,.25); }
+.deck .tbl-badge { right: -8px; bottom: -8px; }
 
-.board-wrap { position: relative; flex: 1; min-height: 0; background: radial-gradient(ellipse at 50% 40%, #1d2a22, #121815 75%); overflow: hidden; touch-action: none; }
+.board-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; }
 .board { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; }
 .board #world { transition: transform .35s ease; }
 .board.dragging #world { transition: none; }
-.board .cand rect { fill: rgba(240,179,84,.06); stroke: var(--warm); stroke-opacity: .55; stroke-width: 2; stroke-dasharray: 6 6; }
-.board .cand.top rect { fill: rgba(240,179,84,.14); stroke-opacity: 1; stroke-width: 3; stroke-dasharray: none; }
+/* cardboard: each tile is ~2 mm thick, so the map has a dark edge and a soft shadow */
+.board .t-shadow { fill: #000; }
+.board .t-edge { fill: #3b2b19; }
+.board .cand rect { fill: rgba(240,179,84,.07); stroke: var(--warm); stroke-opacity: .6; stroke-width: 2; stroke-dasharray: 6 6; }
+.board .cand.top rect { fill: rgba(240,179,84,.16); stroke-opacity: 1; stroke-width: 3; stroke-dasharray: none; }
 .board .cand.on rect { fill: rgba(240,179,84,.22); }
 .board .cand.dead rect { fill: rgba(240,140,140,.08); stroke: var(--bad); stroke-dasharray: 3 6; }
-.board .cand text { font-weight: 800; font-size: 30px; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: rgba(0,0,0,.65); stroke-width: 5px; }
+.board .cand text { font-weight: 800; font-size: 30px; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: rgba(0,0,0,.7); stroke-width: 5px; }
 .board .placed { animation: drop .32s ease-out; transform-box: fill-box; transform-origin: center; }
 @keyframes drop { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: scale(1); } }
+.board .incoming { opacity: 0; }
 .board .last { fill: none; stroke-width: 4; }
-.board .ghost { opacity: .94; }
+.board .ghost { opacity: .97; }
 .board .ghost.spin, .hand svg.spin { transform-box: fill-box; transform-origin: center; animation: spin .22s ease-out; }
 @keyframes spin { from { transform: rotate(var(--from)); } to { transform: rotate(0deg); } }
 .board .ghost-ring { fill: none; stroke: #fff; stroke-width: 3.5; }
 .board .best-ring { fill: none; stroke: var(--good); stroke-width: 5; stroke-dasharray: 10 6; }
 .board-tools { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .board-tools button {
-  width: 42px; height: 42px; border-radius: 10px; background: rgba(26,30,43,.88); border: 1px solid var(--line);
-  font-weight: 700; font-size: 18px; color: var(--muted);
+  width: 42px; height: 42px; border-radius: 10px; background: rgba(24,16,9,.62); border: 1px solid rgba(255,226,170,.2);
+  font-weight: 700; font-size: 18px; color: var(--wood-mute); box-shadow: 0 2px 5px rgba(0,0,0,.35);
 }
 .board-tools #zoom-fit { font-size: 13px; opacity: .45; transition: opacity .15s, color .15s, border-color .15s; }
 .board-tools #zoom-fit.lit { opacity: 1; color: var(--accent); border-color: var(--accent); }
 /* Phone on its side: the board is too short for the column, so the buttons sit in a row. */
 @media (orientation: landscape) and (max-height: 500px) { .board-tools { flex-direction: row; } }
-.board-tools button:active { transform: scale(.94); background: var(--card-hover); }
+.board-tools button:active { transform: scale(.94); background: rgba(24,16,9,.8); }
 .floaters { position: absolute; inset: 0; pointer-events: none; }
 .floater {
   position: absolute; transform: translate(-50%, -50%); font-weight: 800; font-size: 20px;
@@ -116,29 +135,64 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 }
 @keyframes floatup { 0% { opacity: 0; transform: translate(-50%, -30%); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -150%); } }
 
-.dock {
-  flex: none; display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 10px 12px 10px;
-  border-top: 1px solid var(--line); background: var(--bg-soft);
-}
-.hand-box { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.hand { width: 104px; height: 104px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.5); position: relative; }
-.hand svg { width: 100%; height: 100%; display: block; border-radius: 6px; transition: transform .25s ease; }
+/* your edge of the table */
+.dock { flex: none; display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 8px 12px 10px; }
+.hand-box { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.hand { width: 100px; height: 100px; border-radius: 3px; position: relative; transform-origin: 50% 60%;
+  /* a 2 mm cardboard tile: light top-left, dark edge bottom-right, shadow on the table */
+  box-shadow: 1px 1px 0 #6b5236, 2px 2px 0 #4f3b25, 3px 3px 0 #3b2b19, 4px 9px 16px rgba(0,0,0,.55); }
+.hand svg { width: 100%; height: 100%; display: block; border-radius: 3px; transition: transform .25s ease; }
+.hand.theirs { box-shadow: 1px 1px 0 #6b5236, 2px 2px 0 #4f3b25, 3px 3px 0 #3b2b19, 4px 9px 16px rgba(0,0,0,.55), 0 0 0 3px var(--who); }
+.hand.await { visibility: hidden; }
+.hand.flipin { animation: flipin .26s cubic-bezier(.3,.7,.3,1); }
+@keyframes flipin { from { transform: perspective(500px) rotateY(-90deg); } to { transform: perspective(500px) rotateY(0); } }
 .hand .spot { cursor: pointer; }
 .hand .spot circle.halo { fill: none; stroke: rgba(0,0,0,.45); stroke-width: 5.5; }
 .hand .spot circle.ring { fill: rgba(255,255,255,.25); stroke: #fff; stroke-width: 2.4; }
 .hand .spot.on circle.halo { stroke-opacity: .3; }
 .hand .spot.on circle.ring { fill: none; stroke: var(--warm); }
-.hand.empty { box-shadow: none; border: 1px dashed var(--line); }
-.left { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hand.empty { box-shadow: none; border: 2px dashed rgba(255,240,210,.25); background: rgba(0,0,0,.08); }
+.mine { display: flex; justify-content: center; align-items: flex-end; height: 18px; padding-left: 3px; }
+.mine .tbl-meeple { margin-left: 1px; }
+.left { font-size: 11.5px; color: var(--wood-mute); font-variant-numeric: tabular-nums; }
+.left:empty { display: none; }
 .dock-main { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; }
-.status { font-weight: 700; font-size: 15px; line-height: 1.25; height: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sub { font-size: 13px; color: var(--muted); height: 36px; line-height: 1.35; overflow: hidden; }
+.status { font-weight: 700; font-size: 15px; line-height: 1.25; height: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.sub { font-size: 13px; color: var(--wood-mute); height: 36px; line-height: 1.35; overflow: hidden; }
 .sub b.g { color: var(--good); } .sub b.r { color: var(--bad); } .sub b.w { color: var(--warm); }
+.sub .q { border-color: rgba(255,226,170,.3); color: var(--wood-mute); }
 .dock-btns { display: flex; gap: 7px; }
 /* Fixed height: a two-line "Place + big meeple" never pushes the dock around */
 .dock-btns .btn { flex: 0 0 auto; min-width: 64px; height: 46px; min-height: 0; padding: 4px 10px; line-height: 1.12; }
 .dock-btns #btn-place { flex: 1; }
-.side-extra { display: none; }
+#view-play .btn:not(.primary) { background: rgba(24,16,9,.62); border-color: rgba(255,226,170,.2); color: var(--wood-ink); box-shadow: 0 2px 5px rgba(0,0,0,.35); }
+#view-play .btn:not(.primary):hover:not(:disabled) { background: rgba(24,16,9,.8); }
+#view-play .btn.primary:disabled { background: rgba(24,16,9,.5); border-color: rgba(255,226,170,.16); color: var(--wood-mute); }
+.side { display: none; }
+/* Small phones (320 px): a smaller tile so Place keeps its room */
+@media (max-width: 359px) {
+  .dock { gap: 9px; padding: 8px 9px 10px; }
+  .hand { width: 80px; height: 80px; }
+  .mine .tbl-meeple { margin-left: -1px; }
+  .dock-btns { gap: 5px; }
+  .dock-btns .btn { min-width: 54px; padding: 4px 8px; }
+}
+/* Phone on its side: your edge moves to the right so the map keeps the height */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 899px) {
+  #view-play { display: grid; grid-template-columns: 1fr 260px; grid-template-rows: auto 1fr; }
+  .far { grid-column: 1 / 3; grid-row: 1; padding: 4px 10px 2px; }
+  .board-wrap { grid-column: 1; grid-row: 2; }
+  .dock { grid-column: 2; grid-row: 2; align-self: end; grid-template: "h s" auto "h u" 1fr "b b" auto / auto minmax(0, 1fr); gap: 6px 10px; padding: 6px 10px 8px 4px; }
+  .dock-main { display: contents; }
+  .hand-box { grid-area: h; }
+  .hand { width: 76px; height: 76px; }
+  .status { grid-area: s; white-space: normal; height: auto; max-height: 38px; }
+  .sub { grid-area: u; height: auto; max-height: 52px; font-size: 12px; }
+  .dock-btns { grid-area: b; }
+  .stack-box { padding-bottom: 2px; }
+  .deck { --card-w: 30px; }
+
+}
 
 /* end-of-game */
 .final h2 { margin: 0 0 2px; font-size: 22px; }
@@ -301,29 +355,39 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   .tabs { grid-row: 1; grid-column: 1; flex-direction: column; justify-content: flex-start; gap: 4px; padding: 14px 0; border-top: 0; border-right: 1px solid var(--line); }
   .tabs button { flex: none; padding: 12px 0; font-size: 12px; }
   .view { grid-column: 2; grid-row: 1; }
-  #view-play { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 1fr; }
-  .players { grid-column: 1; grid-row: 1; padding: 10px 14px 8px; }
-  .pchip { flex: 0 1 190px; padding: 7px 12px 7px 9px; }
-  .pchip svg { width: 24px; height: 24px; }
-  .pchip .sc { font-size: 24px; }
+  /* laptop: your edge along the bottom of the table, the score track and helpers in a slim side panel */
+  #view-play { display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr auto; }
+  .far { grid-column: 1; grid-row: 1; padding: 10px 14px 6px; gap: 14px; }
+  .players { gap: 10px; }
+  .pchip { flex: 0 1 190px; }
+  .pchip .plate { padding: 4px 10px 4px 6px; max-width: none; }
+  .pchip .plate svg { width: 22px; height: 22px; }
+  .pchip .sc { font-size: 21px; }
   .pchip .nm { font-size: 13px; }
+  .sup { height: 18px; }
+  .deck { --card-w: 50px; }
+  .board-wrap { grid-column: 1; grid-row: 2; }
+  .dock { grid-column: 1; grid-row: 3; gap: 18px; padding: 8px 18px 14px; grid-template-columns: auto minmax(0, 560px); justify-content: center; }
+  .hand { width: 118px; height: 118px; }
+  .mine { height: 22px; }
   .status { font-size: 18px; height: 23px; }
   .sub { font-size: 14px; height: 40px; }
   .dock-btns .btn { font-size: 15px; padding: 4px 16px; }
-  .board-wrap { grid-column: 1; grid-row: 2; }
-  .dock {
-    grid-column: 2; grid-row: 1 / 3; border-top: 0; border-left: 1px solid var(--line);
-    grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; align-content: start; padding: 16px; gap: 14px; min-height: 0;
+  .side {
+    grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 16px;
+    background: rgba(12,8,4,.42); border-left: 1px solid rgba(255,226,170,.12); box-shadow: inset 8px 0 18px -10px rgba(0,0,0,.6);
   }
-  .hand { width: 150px; height: 150px; }
-  .hand-box { flex-direction: row; gap: 14px; align-items: flex-end; }
+  .track svg { width: 100%; display: block; border-radius: 6px; box-shadow: 1px 2px 0 #2e1d0d, 3px 7px 12px rgba(0,0,0,.5); }
+  .track .tm { transition: transform .6s cubic-bezier(.3,.7,.3,1); }
   .side-extra { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
-  .side-extra .log { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--muted); }
+  .side-extra h3 { color: rgba(243,234,216,.82); }
+  .side-extra .muted { color: rgba(243,234,216,.82); }
+  .side-extra .log { list-style: none; margin: 0; padding: 0; font-size: 13.5px; color: rgba(243,234,216,.9); }
   .side-extra .log li { padding: 2px 0; }
   .side-extra .bag { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
   .side-extra .bag div { position: relative; }
-  .side-extra .bag svg { width: 100%; display: block; border-radius: 4px; }
-  .side-extra .bag span { position: absolute; right: -3px; top: -4px; font-size: 10.5px; font-weight: 800; background: #0f1117; border: 1px solid var(--line); border-radius: 8px; padding: 0 4px; }
+  .side-extra .bag svg { width: 100%; display: block; border-radius: 2px; box-shadow: 1px 1px 0 #3b2b19, 2px 3px 4px rgba(0,0,0,.4); }
+  .side-extra .bag span { position: absolute; right: -3px; top: -4px; font-size: 11.5px; font-weight: 800; background: #1b1b1f; color: #fff; border-radius: 8px; padding: 0 4px; }
   .side-extra .bag .z { opacity: .22; }
 
   #view-tiles { padding: 18px 22px; }

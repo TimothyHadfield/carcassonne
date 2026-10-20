@@ -1,7 +1,7 @@
 # Carcassonne — progress
 
 ## START HERE
-Last updated: 2026-10-20 (sounds, celebrations, animations). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
+Last updated: 2026-10-20 (real-table look). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
 
 ## Goal right now
 Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, online rooms, and a real-table companion. Waiting on Tim's feedback.
@@ -19,6 +19,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 | Visual design pass (2026-10-20): walled cities with little houses, tile light/bevel, bigger meeples with shadows, quieter hint squares (best one solid), rotate animates, dock fixed height, 42 px zoom buttons, 6x4 tiles grid on laptop | done, before/after screenshots at 393 px + 1440 px |
 | One zoom (2026-10-20): auto fit of every tile + empty spot, glides as the board grows; pinch/wheel/+ to zoom, Fit (lit when zoomed) or double-tap off a spot to go back | done, `tests/zoom.ui.mjs` 60/60 |
 | Sound & effects (2026-10-20): shared `js/fx.js` + `js/sfx.js`; sounds for every move (yours, computers', online), win/lose celebration, big-city sparkle, score count-ups, meeples fly home; Settings "Sound & effects" section | done, `tests/fx.ui.mjs` 49/49 (26 fails + crash on old code) |
+| Real-table look (2026-10-20): Play screen is a dark wooden table (shared `_table` kit); tiles have cardboard thickness + shadow; far side = score plates + each player's standing meeples + two face-down tile stacks (thickness = tiles left, one badge for both); your edge = your tile held up + your meeples; laptop: your edge under the map, side panel = score track board (0-49, meeples on it, 50/100 tokens) + bag + log; next tile is dealt off the stack and turns over; computers' tiles fly onto their square | done, before/after shots at 393, 320, 659x393, 1280 |
 | Traders & Builders | parked (see Rejected / parked) |
 
 ## Authorized next steps
@@ -32,6 +33,8 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - (2026-10-20, all zoomable boards) "some games have maps and whatnot you can zoom in and out of often. Make it so that there is only an auto zoom that automatically fits the whole board in sight and then you can zoom if you want with easily reseting back to auto mode."
 
 - (2026-10-20, all games) "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered."
+
+- (2026-10-20, all games) "make sure that each of the games also have a look to them so that the game (either board or card layout) looks almost identical to how the board or card layout looks like in real life ... It should look kind of like you're looking through a camera that is connected to a user's glasses that is playing in real life (not actually, but the layout and style of everything should be similar)."
 
 ## Sound map (event -> sound; `js/sfx.js` plan() + `app.js` moveFx/turnFx/finalFx)
 | Event | Sound | Animation |
@@ -67,6 +70,10 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - City walls are drawn only on the field side (`city()` in `render.js` returns fill + wall paths); stroking the whole shape puts a seam on tile edges.
 - The tile bevel sits outside the rotate group in `RD.tile()` so the light stays top-left. Rotation animation: `spinFrom()` in `app.js` (hand + ghost).
 - Zoom lives in `app.js` (`fitBox`, `clampView`, `applyView`, `boardInput`). `renderBoard` starts the new `#world` at the old one's computed transform, or every redraw would cancel the glide. `vs.user` = manual mode. UI test: `node tests/zoom.ui.mjs [--shots dir]` (needs Playwright in `~/.claude/tools`; `SITE_ROOT=<other checkout>` tests old code).
+- `css/table.css` + `js/table.js` are byte copies of `Board and Card Games/_table/`; never edit them here (override in `style.css`). The kit's `filter: drop-shadow` on `.tbl-meeple` drops WebKit to ~2 fps with 20+ meeples (measured): `style.css` turns it off under `#view-play` and draws a shadow ellipse instead.
+- Seats are `#players .pchip[data-seat=i]` (moveFx `chipAt`); the one "you" seat at this device (`meSeat()`) has its meeples in `#mine` at your edge, not under its plate. Pass-the-phone games: everyone's meeples stay under the plates and `#mine` shows the current human's.
+- The first child of `#world` must stay a tile `<g>` (tests measure it): the cardboard edge/shadow layers are `<path>`s. A computer's tile is drawn with class `incoming` (hidden) until its flight from the hand lands (`incomingAt`, `flyToBoard`).
+- Screenshot script for the 4 states x 4 sizes: scratchpad `table/carcassonne/shots.mjs <siteRoot> <outDir> [--widths]` (not in the repo).
 - Screenshots of mid-game states: build a saved state with the engine + AI in node and load it through a throwaway page that sets `localStorage['carcassonne:v1']` (too big for `--local` on Windows).
 
 ## Decisions
@@ -76,6 +83,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - 6-player chips on phone use a compact layout (no names).
 - Easy computer plays the best move with skill 0.6 (weaker on purpose).
 - Sound & effects sits in Settings after Rules; "big" sparkle only for your own finished city of 20+ points; computers' sounds at 85% volume; a game with only computers gets no win/lose.
+- Real-table look: dark wood surface; tile backs plain dark brown with a faint ring (own design); score track only on laptop (phone shows scores on the plates); 4+ players on a phone show colour + score without names; phone on its side puts your edge bottom-right; tiles in two stacks (`#deck2` + `#deck`, the badge sits on `#deck`, deals fly from `#deck`); supply meeples get a seeded tilt (`TABLE.jitter`).
 - Auto fit caps a tile at 150 px (else the opening tile fills a laptop screen); manual zoom max is 2.5 or twice the fit.
 
 ## Measured strength (1000 games each)
@@ -87,6 +95,8 @@ Hard vs Med 81%, Hard vs Easy 98%, Med vs Easy 95%, Hard vs 3 Med 84%, Med vs 3 
 - Real two-finger pinch on an iPhone (test uses synthetic pointer events in WebKit).
 - Online games with River or I&C turned on (engine tests cover the adapter with options; no live browser run).
 - How the sounds actually sound and their loudness on a real iPhone (tests use a fake speaker); online sounds from another player's move (same code path as computer moves, not run with two browsers).
+
+- Real-table look: the deal/flip and tile flights on a real iPhone (WebKit emulation only); frame rate on a real phone with a late 4-player game (headless WebKit: idle 42-44 fps, same as before); online opponent tile flights (same code path as computers, no two-browser run).
 
 ## Rejected / parked
 - ~~Traders & Builders~~ parked: needs goods tokens, the builder double turn and the pig; base + River + I&C first.

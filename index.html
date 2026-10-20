@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#0f1117">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="css/table.css?v=1">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" id="defs-host"></svg>
@@ -22,8 +23,11 @@
   </nav>
 
   <!-- ========================= PLAY (vs computer) ========================= -->
-  <main class="view" id="view-play">
-    <div class="players" id="players"></div>
+  <main class="view tbl-surface tbl-wood-dark" id="view-play">
+    <div class="far" id="far">
+      <div class="players" id="players"></div>
+      <div class="stack-box"><div class="deck deck2" id="deck2" aria-hidden="true"></div><div class="deck" id="deck" role="img" aria-label="Tiles left"></div></div>
+    </div>
     <div class="board-wrap" id="board-wrap">
       <svg id="board" class="board"></svg>
       <div class="board-tools">
@@ -36,6 +40,7 @@
     <aside class="dock" id="dock">
       <div class="hand-box">
         <div class="hand" id="hand" aria-label="Your tile"></div>
+        <div class="mine" id="mine" aria-label="Your meeples"></div>
         <div class="left" id="left"></div>
       </div>
       <div class="dock-main">
@@ -47,6 +52,9 @@
           <button class="btn primary" id="btn-place" disabled>Place</button>
         </div>
       </div>
+    </aside>
+    <aside class="side" id="side">
+      <div class="track" id="track" aria-label="Score track"></div>
       <div class="side-extra" id="side-extra"></div>
     </aside>
   </main>
@@ -98,9 +106,10 @@
 <script src="js/odds.js?v=4"></script>
 <script src="js/render.js?v=5"></script>
 <script src="js/game.js?v=4"></script>
-<script src="js/fx.js?v=3"></script>
+<script src="js/fx.js?v=4"></script>
+<script src="js/table.js?v=1"></script>
 <script src="js/sfx.js?v=1"></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/app.js?v=8"></script>
 <script type="module" src="js/net.js?v=4"></script>
 </body>
 </html>

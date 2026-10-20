@@ -57,7 +57,9 @@
     const st = g.st, L = st.last, F = fx(), SX = self.CarcSfx;
     if (!L || !F || !SX) return;
     const my = gen, mine = g.seats[L.p] === 'you', k = speed(), vis = anims() && S.tab === 'play';
-    const chipAt = (p) => document.querySelectorAll('#players .pchip')[p];
+    const chipAt = (p) => document.querySelector(`#players .pchip[data-seat="${p}"]`);
+    // where a player's meeples stand: yours at your edge of the table, the others' in their seat
+    const homeOf = (p) => (p === meSeat() && $('mine').firstChild ? $('mine') : chipAt(p) && (chipAt(p).querySelector('.sup') || chipAt(p)));
     for (const s of SX.plan(prev, st, mine)) setTimeout(() => { if (my === gen) sfx(s.name, s.opts); }, s.at * k);
     // Meeples go back to their owner's chip.
     if (vis) for (const m of SX.returned(prev, st)) {
@@ -70,9 +72,9 @@
       el.style.cssText = `position:fixed;left:${at.x - size / 2}px;top:${at.y - size / 2}px;width:${size}px;height:${size}px;pointer-events:none;z-index:30`;
       document.body.appendChild(el);
       setTimeout(() => {
-        const chip = chipAt(m.p);
-        if (my !== gen || !chip) { el.remove(); return; }
-        F.flyTo(el, chip.querySelector('svg') || chip, { clone: false, duration: 520, scale: 0.6 }).then(() => el.remove());
+        const home = homeOf(m.p);
+        if (my !== gen || !home) { el.remove(); return; }
+        F.flyTo(el, home, { clone: false, duration: 520, scale: 0.6 }).then(() => el.remove());
       }, (300 + L.ev.length * 250) * k);
     }
     // Scores count up on the chips (the end-of-game farms included).
@@ -143,14 +145,18 @@
       }
       const moved = snap.pub.moves > g.st.moves;
       const prev = g.st;
+      const byOther = moved && snap.pub.moves === prev.moves + 1 && g.seats[prev.turn] !== 'you';
+      const src = byOther ? handSource(prev) : null;   // their tile flies from the middle to its square
       g.st = snap.pub; g.seats = netSeats(snap);
+      if (src && g.st.last) incomingAt = g.st.moves;
       if (moved) {
         g.race.push(g.st.scores.slice());
         if (g.st.last) for (const e of g.st.last.ev) g.log.push({ ...e, by: g.st.last.p });
         logFinal(g);
         sel = null; handR = 0; showBest = null;
       }
-      if (S.tab === 'play') { renderPlay(); if (moved && g.st.last) floatEvents(g.st.last.ev); }
+      if (S.tab === 'play') { renderPlay(); if (moved && g.st.last) floatEvents(g.st.last.ev); flyToBoard(src, g.st); }
+      else if (incomingAt === g.st.moves) incomingAt = -1;
       tick();
       if (moved && g.st.last) moveFx(prev, g);
       return;
@@ -292,7 +298,9 @@
       return;
     }
     const p = g.st.turn, prev = g.st;
+    const src = human ? null : handSource(g.st);   // a computer's tile flies from the middle to its square
     g.st = E.apply(g.st, a);
+    if (src) incomingAt = g.st.moves;
     g.race.push(g.st.scores.slice());
     const evs = g.st.last.ev.map((e) => ({ ...e, by: p }));
     for (const e of evs) g.log.push(e);
@@ -300,6 +308,7 @@
     sel = null; handR = 0; showBest = null;
     save();
     renderPlay();
+    flyToBoard(src, g.st);
     floatEvents(g.st.last.ev);
     tick();
     if (S.game === g) moveFx(prev, g);
@@ -384,6 +393,11 @@
   function renderBoard() {
     const g = S.game, st = g.st, svg = $('board');
     let s = '';
+    // Cardboard under the map: one path for every tile's edge and one for its shadow on the table
+    // (paths, not groups, so the first group in #world is still a tile).
+    let under = '';
+    for (const k in st.board) { const [x, y] = k.split(',').map(Number); under += `M${x * 100} ${y * 100}h100v100h-100z`; }
+    s += `<path class="t-shadow" d="${under}" transform="translate(6 10)" opacity=".16"/><path class="t-shadow" d="${under}" transform="translate(3.5 6)" opacity=".2"/><path class="t-edge" d="${under}" transform="translate(2 3)"/>`;
     for (const k in st.board) {
       const [x, y] = k.split(',').map(Number), tl = st.board[k];
       let extra = '';
@@ -392,9 +406,10 @@
         extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? 44 : 32);
       }
       const isLast = st.last && st.last.x === x && st.last.y === y;
-      // Drop-in motion plays once per move, not on every redraw.
+      // Drop-in motion plays once per move, not on every redraw; a tile still flying in stays hidden.
       const anim = isLast && animatedAt !== st.moves;
-      s += `<g class="${anim ? 'placed' : ''}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100, extra)}</g>`;
+      const cls = isLast && incomingAt === st.moves ? 'incoming' : anim ? 'placed' : '';
+      s += `<g class="${cls}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100, extra)}</g>`;
       if (isLast) s += `<rect class="last" x="${x * 100 + 2}" y="${y * 100 + 2}" width="96" height="96" rx="3" stroke="${RD.PLAYER[st.last.p]}"/>`;
     }
     if (isHumanTurn()) {
@@ -419,6 +434,8 @@
         const f = sel.fi >= 0 ? T.TYPES[st.cur].rot[sel.r].feats[sel.fi] : null;
         const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? 44 : 32) : '';
         const turn = spinFrom('ghost', sel.x + ',' + sel.y, sel.r);
+        // held just above its square: a bigger, softer shadow than the laid tiles
+        s += `<rect x="${sel.x * 100 + 7}" y="${sel.y * 100 + 12}" width="100" height="100" rx="3" fill="#000" opacity=".3"/>`;
         s += `<g class="ghost${turn ? ' spin' : ''}" style="--from:${turn}deg">${RD.tile(st.cur, sel.r, sel.x * 100, sel.y * 100, 100, extra)}</g>`;
         s += `<rect class="ghost-ring" x="${sel.x * 100}" y="${sel.y * 100}" width="100" height="100" rx="3"/>`;
       } else spinFrom('ghost', '', 0);
@@ -431,23 +448,151 @@
     applyView();
   }
 
+  // The one seat at this device (single player or online); -1 when several people share the phone.
+  function meSeat() {
+    const g = S.game;
+    if (!g) return -1;
+    const you = g.seats.map((k, i) => (k === 'you' ? i : -1)).filter((i) => i >= 0);
+    return you.length === 1 ? you[0] : -1;
+  }
+  // A player's meeples standing on the table: wooden pieces (css/table.css), the big one taller.
+  function supply(p, size) {
+    const st = S.game.st, n = st.meeples[p], big = st.opts.ic ? st.big[p] : 0;
+    // a loose group, not a neat row: each piece a little turned and nudged (seeded, so it never jiggles on redraw)
+    const one = (s, i) => {
+      const j = self.TABLE ? TABLE.jitter('m' + p, i, { rot: 10, off: 1.6 }) : { x: 0, y: 0, r: 0 };
+      return `<span class="tbl-meeple" style="--piece:${RD.PLAYER[p]};--size:${s}px;rotate:${j.r}deg;translate:${j.x / 2}px ${j.y}px"></span>`;
+    };
+    let out = big ? one(Math.round(size * 1.4), 9) : '';
+    for (let i = 0; i < n; i++) out += one(size, i);
+    return out || '<span class="none">0</span>';
+  }
   function renderPlayers() {
-    const g = S.game, st = g.st;
-    $('players').classList.toggle('many', g.seats.length >= 5);
-    $('players').classList.toggle('stack', g.seats.length >= 5 || (st.opts.ic && g.seats.length >= 3));
+    const g = S.game, st = g.st, me = meSeat(), wide = window.innerWidth >= 900;
+    $('players').classList.toggle('many', g.seats.length >= 4);   // phone: colour + score only (names cut to "Y..")
+    // Far side of the table: everyone's score plate; the others' meeples stand under theirs (yours are at your edge).
     $('players').innerHTML = g.seats.map((k, i) => `
-      <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}">
-        <svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
-        <div class="col"><span class="nm">${esc(seatName(i))}</span>
-        <span class="sc">${st.scores[i]}</span></div>
-        <span class="mp" title="Meeples left">${st.meeples[i]}<svg viewBox="0 0 20 20" style="width:11px;height:11px;vertical-align:-1px;margin-left:1px"><use href="#meeple" fill="#969db4"/></svg>${st.opts.ic ? ` ${st.big[i]}<svg viewBox="0 0 20 20" style="width:15px;height:15px;vertical-align:-2px;margin-left:1px"><use href="#meeple" fill="#969db4"/></svg>` : ''}</span>
+      <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}" data-seat="${i}">
+        <div class="plate"><svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
+        <span class="nm">${esc(seatName(i))}</span><span class="sc">${st.scores[i]}</span></div>
+        <div class="sup" title="Meeples left">${i === me ? '' : supply(i, wide ? 14 : g.seats.length >= 5 ? 10 : 12)}</div>
       </div>`).join('');
+    // Your meeples, standing in front of you (pass the phone: whoever's turn it is).
+    const mine = me >= 0 ? me : g.seats[st.turn] === 'you' ? st.turn : -1;
+    $('mine').innerHTML = mine >= 0 ? supply(mine, wide ? 17 : 14) : '';
+    // The face-down tiles, in two stacks like on a real table (the badge counts both).
+    const left = st.over ? 0 : st.bag.length, front = Math.ceil(left / 2);
+    if (window.TABLE) {
+      TABLE.deck($('deck2'), left - front, { pattern: 'lattice', cls: 'tile-back', perCard: 0.3, max: 9, badge: false });
+      TABLE.deck($('deck'), front, { pattern: 'lattice', cls: 'tile-back', perCard: 0.3, max: 9, badge: false });
+      if (left) $('deck').insertAdjacentHTML('beforeend', `<span class="tbl-badge">${left}</span>`);
+    }
+    $('deck').setAttribute('aria-label', `${left} tiles left`);
+  }
+
+  // Laptop: the score track board, 0-49 around the edge like the real one; each player's
+  // meeple stands on their score (lying down with a 50 / 100 token past a lap).
+  const TRACK = (() => {
+    const out = [], C = 16, R = 11;
+    for (let i = 0; i < C; i++) out.push([i, 0]);
+    for (let j = 1; j < R; j++) out.push([C - 1, j]);
+    for (let i = C - 2; i >= 0; i--) out.push([i, R - 1]);
+    for (let j = R - 2; j >= 1; j--) out.push([0, j]);
+    return out;   // 50 squares, 0 top-left, clockwise
+  })();
+  let trackFor = '';
+  function renderTrack() {
+    const g = S.game, st = g.st, el = $('track'), Z = 18;
+    const key = g.seats.length + ':' + gen;
+    if (trackFor !== key) {
+      trackFor = key;
+      const sq = TRACK.map(([i, j], n) => `<g transform="translate(${i * Z + 4} ${j * Z + 4})"><rect width="${Z - 1}" height="${Z - 1}" rx="2" fill="${n % 5 ? '#efe4c7' : '#e3cf9c'}" stroke="#8a6a3c" stroke-width=".8"/>` +
+        `<text x="${(Z - 1) / 2}" y="${(Z - 1) / 2 + 0.5}" font-size="${n > 9 ? 7 : 8}" font-weight="700" fill="#6b4f2a" text-anchor="middle" dominant-baseline="central">${n}</text></g>`).join('');
+      // the picture in the middle: a few of our own tiles, like the landscape on the real board
+      // (a monastery road, the start tile, a straight, a crossing under a city, a bend)
+      const pic = [['A', 3], ['D', 0], ['U', 1], ['L', 0], ['V', 0]];
+      const art = pic.map(([id, r], c) => { const t = T.TYPES.find((q) => q.id === id); return t ? RD.tile(t.idx, r, 33 + c * 46, 80, 46) : ''; }).join('');
+      el.innerHTML = `<svg viewBox="0 0 296 206" aria-hidden="true">
+        <rect x="1" y="1" width="294" height="204" rx="6" fill="#6f4b26" stroke="#3f2914" stroke-width="2"/>
+        <rect x="22" y="22" width="252" height="162" rx="3" fill="url(#grass)"/>${art}
+        <rect x="22" y="22" width="252" height="162" rx="3" fill="url(#bevel)"/>${sq}
+        ${g.seats.map((_, p) => `<g class="tm" data-p="${p}"></g>`).join('')}</svg>`;
+    }
+    // where each player stands; players on the same square stand side by side
+    const at = {};
+    st.scores.forEach((v, p) => {
+      const n = v % 50, laps = Math.floor(v / 50), [i, j] = TRACK[n];
+      const k = at[n] = (at[n] || 0) + 1;
+      const x = i * Z + 4 + 2 + (k - 1) % 3 * 4, y = j * Z + 4 - 4 + Math.floor((k - 1) / 3) * 5;
+      const m = el.querySelector(`.tm[data-p="${p}"]`);
+      if (!m) return;
+      m.style.transform = `translate(${x}px, ${y}px)`;
+      const tok = laps ? `<circle cx="7" cy="13" r="7" fill="#d8b46a" stroke="#3b2a12" stroke-width="1"/><text x="7" y="13.5" font-size="${laps > 1 ? 6 : 7}" font-weight="800" fill="#3b2a12" text-anchor="middle" dominant-baseline="central">${laps * 50}</text>` : '';
+      const html = tok + `<ellipse cx="8" cy="18" rx="6" ry="1.8" fill="#000" opacity=".35"/><use href="#meeple" width="14" height="14" x="1" y="4" fill="${RD.PLAYER[p]}" stroke="rgba(255,255,255,.85)" stroke-width="1.2" paint-order="stroke"${laps ? ' transform="rotate(90 8 11)"' : ''}/>`;
+      if (m.dataset.v !== String(v)) { m.dataset.v = v; m.innerHTML = html; }
+    });
+  }
+
+  // ---------------------------------------------------------------- tiles moving like real ones
+  let incomingAt = -1;   // move number of a tile still flying onto the board (hidden there until it lands)
+  let handKey = null, dealing = false;
+  // A ghost drawn at `to` that starts at `from` (size and place) and glides into place.
+  function glide(html, from, to, ms) {
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    el.style.cssText = `position:fixed;left:${to.left}px;top:${to.top}px;width:${to.width}px;height:${to.height}px;pointer-events:none;z-index:30;transform-origin:0 0`;
+    document.body.appendChild(el);
+    const k = from.width / (to.width || 1);
+    const a = el.animate([{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${k})` }, { transform: 'none' }],
+      { duration: ms * speed(), easing: 'cubic-bezier(.3,.7,.3,1)' });
+    return new Promise((res) => { const done = () => { el.remove(); res(); }; a.onfinish = done; a.oncancel = done; setTimeout(done, ms * speed() + 200); });
+  }
+  // The next tile comes off the face-down stack into the hand, then turns face up.
+  function dealToHand() {
+    const deck = $('deck').querySelector('.tbl-back'), hand = $('hand');
+    if (!deck) return;
+    const my = gen;
+    dealing = true; hand.classList.add('await');
+    const back = `<div class="tbl-card tbl-back tbl-lattice tbl-square tile-back" style="--card-w:${hand.offsetWidth}px;width:100%;height:100%"></div>`;
+    glide(back, deck.getBoundingClientRect(), hand.getBoundingClientRect(), 380).then(() => {
+      dealing = false;
+      const h = $('hand');
+      h.classList.remove('await');
+      if (my !== gen) return;
+      h.classList.add('flipin');
+      setTimeout(() => h.classList.remove('flipin'), 400 * speed());
+    });
+  }
+  // Someone else's tile goes from the middle of the table (the hand) onto its square.
+  function flyToBoard(src, st) {
+    if (!src || !st.last || incomingAt !== st.moves) return;
+    const L = st.last, p0 = boardPoint(L.x * 100, L.y * 100), size = vs.s * 100;
+    const my = gen;
+    glide(RD.tileSVG(src.t, L.r).replace('<svg ', '<svg style="width:100%;height:100%;display:block;border-radius:3px;box-shadow:3px 6px 12px rgba(0,0,0,.5)" '),
+      src.rect, { left: p0.x, top: p0.y, width: size, height: size }, 420).then(() => {
+      if (incomingAt === st.moves) incomingAt = -1;
+      if (my !== gen) return;
+      const g = document.querySelector('#world .incoming');
+      if (g) { g.classList.remove('incoming'); g.classList.add('placed'); }
+    });
+  }
+  // Before a move by someone not at this device: where their tile is now (the hand).
+  function handSource(st) {
+    const h = $('hand');
+    if (!anims() || S.tab !== 'play' || st.cur < 0 || !h || h.classList.contains('empty')) return null;
+    const r = h.getBoundingClientRect();
+    return r.width ? { rect: r, t: st.cur } : null;
   }
 
   function renderHand() {
     const g = S.game, st = g.st, el = $('hand');
-    if (st.over || st.cur < 0) { el.className = 'hand empty'; el.innerHTML = ''; return; }
-    el.className = 'hand';
+    if (st.over || st.cur < 0) { el.className = 'hand empty'; el.innerHTML = ''; handKey = null; return; }
+    const key = gen + ':' + st.moves + ':' + st.cur, fresh = handKey !== null && handKey !== key;
+    handKey = key;
+    const theirs = !isHumanTurn() && !(g.online && g.seats[st.turn] === 'you');
+    el.className = 'hand' + (dealing ? ' await' : '') + (theirs ? ' theirs' : '');
+    el.style.setProperty('--who', RD.PLAYER[st.turn]);
+    if (fresh && anims() && S.tab === 'play') dealToHand();
     const r = sel ? sel.r : handR;
     let extra = '';
     if (sel && isHumanTurn()) {
@@ -490,7 +635,8 @@
 
   function renderDock() {
     const g = S.game, st = g.st;
-    $('left').textContent = (g.online && netSnap && netSnap.code ? `Room ${netSnap.code} · ` : '') + (st.over ? 'Game over' : `${st.bag.length} left in bag`);
+    // (tiles left: the badge on the face-down stack)
+    $('left').textContent = g.online && netSnap && netSnap.code ? `Room ${netSnap.code}` : '';
     const status = $('status'), sub = $('substatus');
     const human = isHumanTurn();
     $('btn-rotate').disabled = !human;
@@ -554,7 +700,7 @@
     renderBoard();
     renderHand();
     renderDock();
-    if (window.innerWidth >= 900) renderSide();
+    if (window.innerWidth >= 900) { renderTrack(); renderSide(); }
   }
 
   function floatEvents(evs, gap) {
