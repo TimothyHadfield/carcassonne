@@ -1,7 +1,7 @@
 # Carcassonne — progress
 
 ## START HERE
-Last updated: 2026-10-20 (edge pass: weird situations). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
+Last updated: 2026-10-21 (visibility pass: big crowded maps readable). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
 
 ## Goal right now
 Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, online rooms, and a real-table companion. Waiting on Tim's feedback.
@@ -21,6 +21,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 | Sound & effects (2026-10-20): shared `js/fx.js` + `js/sfx.js`; sounds for every move (yours, computers', online), win/lose celebration, big-city sparkle, score count-ups, meeples fly home; Settings "Sound & effects" section | done, `tests/fx.ui.mjs` 49/49 (26 fails + crash on old code) |
 | Real-table look (2026-10-20): Play screen is a dark wooden table (shared `_table` kit); tiles have cardboard thickness + shadow; far side = score plates + each player's standing meeples + two face-down tile stacks (thickness = tiles left, one badge for both); your edge = your tile held up + your meeples; laptop: your edge under the map, side panel = score track board (0-49, meeples on it, 50/100 tokens) + bag + log; next tile is dealt off the stack and turns over; computers' tiles fly onto their square | done, before/after shots at 393, 320, 659x393, 1280 |
 | Edge pass (2026-10-20): 50 weird situations tested (list in the table below); fixes for Back, New game by mistake, two tabs, online room start/close, no meeples, tiles set aside, 6 players at 320 px and laptop, results buttons; reviewer leftovers: meeples stand as a little crowd, phone score track (25 x 2 strip), wooden zoom tokens; `_table` kit 1.0.1 recopied | done, `tests/edge.ui.mjs` 121/121 (25 fails on old code) |
+| Visibility pass (2026-10-21): meeples on the map at least ~12 px on a phone (own layer on top of the tiles, up to ~60% of a tile, about the real piece); a tap or Hint on a map with tiles under 40 px zooms in to that spot (64 px tiles), a tap on a taken square magnifies there, Place goes back to the whole map; zoom tokens get their own strip (column right or row on top, whichever leaves the map bigger), never over a tile; phone on its side: map takes the whole left under the track, plates + stack + your edge in the right column; laptop: map full height, your edge at the foot of the side panel | done, `tests/vis.ui.mjs` 40/40 WebKit + Chrome (18 fails on old code) |
 | Traders & Builders | parked (see Rejected / parked) |
 
 ## Authorized next steps
@@ -38,6 +39,8 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - (2026-10-20, all games) "make sure that each of the games also have a look to them so that the game (either board or card layout) looks almost identical to how the board or card layout looks like in real life ... It should look kind of like you're looking through a camera that is connected to a user's glasses that is playing in real life (not actually, but the layout and style of everything should be similar)."
 
 - (2026-10-20, all games) "Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird."
+
+- (2026-10-21, all games) "for a lot of the games the cards or board layout is too small to easily see what's going on. Some games just need small design imporvements like filling the screen with the board view and fitting the cards and other things in the empty space ... Fix this so the view of what's happening and where everything is is very clear. Consider parts of the board that are dense in what's happening and if the user can reasonably see it."
 
 ## Weird scenarios (edge pass 2026-10-20; full list: 50 in the pass notes, test `tests/edge.ui.mjs`)
 | Scenario | Old code | Now |
@@ -97,6 +100,8 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - Results sheet and "?" bubble push a history step (`overlayStep`); closing by hand steps back with `popSkip` (a tab tap in the same click waits for it via `afterPop`).
 - Under heavy machine load the fx/edge timing checks can be late (computer move > 750 ms); rerun once before hunting a bug (old code flakes the same).
 - Screenshot script for the 4 states x 4 sizes: scratchpad `table/carcassonne/shots.mjs <siteRoot> <outDir> [--widths]` (not in the repo).
+- Board meeples are drawn in their own layer after all tiles (size from `meepleSize()`, from the fit zoom), so a big meeple's overhang isn't covered by the next tile; an incoming computer tile hides its meeple too (`flyToBoard` un-hides every `.incoming`). `vs.focus` = zoomed in by a tap/Hint (`focusOn`); a human `submit` returns to auto. Zoom token side: `toolsRow` + `.board-wrap.tools-row` set in `fit()`.
+- Visibility test: `node tests/vis.ui.mjs [--shots dir]` (`ENGINE=chromium` for Chrome). Audit script (not in repo): scratchpad `vis/carcassonne/shots.mjs <siteRoot> <outDir>`.
 - Screenshots of mid-game states: build a saved state with the engine + AI in node and load it through a throwaway page that sets `localStorage['carcassonne:v1']` (too big for `--local` on Windows).
 
 ## Decisions
@@ -108,6 +113,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - Sound & effects sits in Settings after Rules; "big" sparkle only for your own finished city of 20+ points; computers' sounds at 85% volume; a game with only computers gets no win/lose.
 - Real-table look: dark wood surface; tile backs plain dark brown with a faint ring (own design); score track only on laptop (phone shows scores on the plates); 4+ players on a phone show colour + score without names; phone on its side puts your edge bottom-right; tiles in two stacks (`#deck2` + `#deck`, the badge sits on `#deck`, deals fly from `#deck`); supply meeples get a seeded tilt (`TABLE.jitter`).
 - Edge pass looks (plainest, Tim can redirect): phone score track = the 50-square loop as a 25 x 2 strip under the plates; meeples left = two loose rows; zoom = round wooden tokens (Fit lit = blue ring); 5-6 players on a phone = coloured left edge on the plate instead of the meeple icon; "Start over?" second-tap guard; companion Tiles/Scores still base game only and 5 players max (Tim's call).
+- Visibility pass looks (plainest, Tim can redirect): meeples on a zoomed-out map grow to ~60% of a tile; tap-to-zoom at 64 px tiles when tiles are under 40 px; laptop "your edge" moved from under the map to the foot of the side panel; phone on its side: plates in rows of 2-3 in the right column.
 - Auto fit caps a tile at 150 px (else the opening tile fills a laptop screen); manual zoom max is 2.5 or twice the fit.
 
 ## Measured strength (1000 games each)
@@ -121,6 +127,7 @@ Hard vs Med 81%, Hard vs Easy 98%, Med vs Easy 95%, Hard vs 3 Med 84%, Med vs 3 
 - Online games with River or I&C turned on (engine tests cover the adapter with options; no live browser run).
 - How the sounds actually sound and their loudness on a real iPhone (tests use a fake speaker); online sounds from another player's move (same code path as computer moves, not run with two browsers).
 
+- Visibility pass: tap-to-zoom with a real finger on an iPhone (synthetic touch events in WebKit + Chrome only). Still small by nature: on a phone a late map's whole-map view has 16-20 px tiles and 7-8 px hint numbers (the tap zoom is the answer); meeple circles on the hand tile ~20-30 px; laptop side panel bag scrolls (last row below the fold at 1280x800).
 - Real-table look: the deal/flip and tile flights on a real iPhone (WebKit emulation only); frame rate on a real phone with a late 4-player game (headless WebKit: idle 42-44 fps, same as before); online opponent tile flights (same code path as computers, no two-browser run).
 
 ## Rejected / parked

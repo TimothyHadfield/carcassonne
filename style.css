@@ -206,6 +206,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   .hand { width: 76px; height: 76px; }
   .status { grid-area: s; white-space: normal; height: auto; max-height: 38px; }
   .sub { grid-area: u; height: auto; max-height: 52px; font-size: 12px; }
+  .sub:has(#btn-new2) { max-height: none; }   /* game over: Results + New game wrap to two rows, both whole */
   .dock-btns { grid-area: b; }
   .stack-box { padding-bottom: 2px; }
   .deck { --card-w: 30px; }
@@ -396,6 +397,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   .sub { grid-area: u; height: 57px; line-height: 19px; }
   .dock-btns { grid-area: b; }
   .side, .dock { background: rgba(12,8,4,.42); border-left: 1px solid rgba(255,226,170,.12); box-shadow: inset 8px 0 18px -10px rgba(0,0,0,.6); }
+  .dock { border-top: 1px solid rgba(255,226,170,.12); }   /* your edge is its own part, not the end of the scoring list */
   .hand { width: 118px; height: 118px; }
   .mine { min-height: 22px; }
   .status { font-size: 18px; }

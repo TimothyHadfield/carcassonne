@@ -37,3 +37,10 @@
 - **Built:** 50 scenarios listed and tested; fixes: no-meeples status, set-aside notice, Back closes sheet/bubble first, "Start over?" guard on New game, two-tab sync, pending computer move cancelled when a room starts, room-closed notice, tally to 7, 6-player plates at 320/393, laptop grid with 6 plates, sticky results buttons; meeple crowds, phone score strip (25 x 2), wooden zoom tokens; `_table` 1.0.1 recopied + `.gitattributes`.
 - **Verified:** new `tests/edge.ui.mjs` 121/121 (25 fails on old code); engine 164, odds 15, online 18, zoom 60, fx 49; screenshots at 320, 393, 659x393, 1280, 1920, 640x400 (WebKit), no overflow, no errors; re-render time measured not slower (181 vs 251 ms median, noisy machine).
 - **Open:** online fixes only with a stand-in room; real iPhone.
+
+## 2026-10-21 — visibility pass (crowded maps)
+- **Asked:** Tim (all games): boards too small to see what's going on; fill the screen with the board, use the empty space, and check the dense parts.
+- **Audit (before, WebKit):** late 6-player map (79 tiles) at 393 px: tiles 19.8 px, meeples 6.2 px, hint numbers 7.7 px, lit squares 18 px; zoom tokens covered 5 tiles/spots; phone on its side gave the map 38% of the screen; laptop meeples 13.8 px, map lost 170 px of height to your edge.
+- **Built:** meeples in their own layer, sized ~17 px on screen (32-62 tile units); tap/Hint on a tiny map zooms to that spot (64 px tiles), Place returns to the whole map; zoom tokens get their own strip; side-on phone layout (plates in the right column); laptop your edge at the foot of the side panel; game-over Results/New game no longer clipped on a side-on phone.
+- **Verified:** new `tests/vis.ui.mjs` 40/40 in WebKit and Chrome (18 fails on old code); engine, odds, online, zoom, fx, edge suites pass; before/after shots at 393, 320, 659x393, 1280, 1440; one read-only reviewer pass, its fixes applied.
+- **Open:** real-finger tap zoom on an iPhone; whole-map view of a late phone map stays small by nature (tap zoom covers it).
