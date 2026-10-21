@@ -292,6 +292,7 @@
   function submit(a) {
     const g = S.game;
     const human = isHumanTurn();
+    if (human && vs.focus) { vs.user = false; vs.focus = false; }   // zoomed in to place: back to the whole map
     if (human && S.set.study) {
       const best = getRanked()[0];
       const mine = valueOf(a);
@@ -340,26 +341,48 @@
   // tile could go) in the board area. Pinch / wheel / + leave auto mode;
   // Fit, double-tap on empty board, or zooming back out to the fit return to it.
   const AUTO_MAX = 1.5;   // a 1-tile board shouldn't fill the screen
+  // The zoom tokens get a strip of their own, so they never cover a tile or a spot: a column
+  // down the right or a row along the top, whichever leaves the map bigger.
+  const TOOLS = 56;       // 42 px token + its 8 px inset + a small gap
+  let toolsRow = false;
   function fitBox() {
     const svg = $('board'), W = svg.clientWidth, H = svg.clientHeight;
     if (!W || !H || !S.game) return null;
     const b = bounds(S.game.st);
     const w = (b.x1 - b.x0 + 1) * 100, h = (b.y1 - b.y0 + 1) * 100;
-    const s = Math.min(AUTO_MAX, (W - 16) / w, (H - 16) / h);
-    return { s, tx: W / 2 - s * ((b.x0 + b.x1 + 1) * 50), ty: H / 2 - s * ((b.y0 + b.y1 + 1) * 50), W, H,
+    const sc = (aw, ah) => Math.min(AUTO_MAX, (aw - 16) / w, (ah - 16) / h);
+    const col = sc(W - TOOLS, H), row = sc(W, H - TOOLS);
+    // (only switch sides for a clear gain, so the tokens don't hop about as the map grows)
+    const r = toolsRow ? row * 1.04 >= col : row > col * 1.04;
+    const s = r ? row : col, ax = 0, ay = r ? TOOLS : 0, aw = r ? W : W - TOOLS, ah = r ? H - TOOLS : H;
+    return { s, row: r, tx: ax + aw / 2 - s * ((b.x0 + b.x1 + 1) * 50), ty: ay + ah / 2 - s * ((b.y0 + b.y1 + 1) * 50), W, H,
       bx0: b.x0 * 100, bx1: (b.x1 + 1) * 100, by0: b.y0 * 100, by1: (b.y1 + 1) * 100 };
   }
   function fit() {
     const f = fitBox();
     if (!f) return;
     vs.s = f.s; vs.tx = f.tx; vs.ty = f.ty;
+    if (f.row !== toolsRow) { toolsRow = f.row; $('board-wrap').classList.toggle('tools-row', toolsRow); }
+  }
+  // A crowded map on a small screen: a tap (or Hint) zooms in on that spot, so the
+  // tiles, meeples and lit squares around it are big enough to see and tap. Place
+  // (or Fit) goes back to the whole map.
+  const FOCUS_BELOW = 40, FOCUS_PX = 64;   // tile size on screen (px)
+  function focusOn(wx, wy) {
+    const f = fitBox();
+    if (!f || vs.user || f.s * 100 >= FOCUS_BELOW) return false;
+    vs.s = Math.min(maxZoom(), FOCUS_PX / 100);
+    vs.tx = f.W / 2 - vs.s * wx; vs.ty = f.H / 2 - vs.s * wy;
+    vs.user = true; vs.focus = true;
+    clampView();
+    return true;
   }
   const maxZoom = () => { const f = fitBox(); return Math.max(2.5, (f ? f.s : 1) * 2); };
   // Manual mode: never smaller than the fit, and the board can't be dragged off-screen.
   function clampView() {
     const f = fitBox();
     if (!f) return;
-    if (vs.s <= f.s * 1.001) { vs.user = false; fit(); return; }
+    if (vs.s <= f.s * 1.001) { vs.user = false; vs.focus = false; fit(); return; }
     const m = 8;
     const lim = (t, a0, a1, size) => {
       const lo = Math.min(size - m - vs.s * a1, m - vs.s * a0), hi = Math.max(size - m - vs.s * a1, m - vs.s * a0);
@@ -382,7 +405,7 @@
     shown = t;
     if (jump) { void w.getBoundingClientRect(); svg.classList.remove('dragging'); }
   }
-  function toAuto() { vs.user = false; fit(); applyView(); }
+  function toAuto() { vs.user = false; vs.focus = false; fit(); applyView(); }
   function scaleLabel(v, lo, hi) {
     const t = hi - lo < 1e-6 ? 1 : (v - lo) / (hi - lo);
     return `hsl(${Math.round(t * 120)}, 75%, 62%)`;
@@ -403,6 +426,12 @@
     return out;
   }
 
+  // Meeple size in tile units (a tile is 100): about 17 px on screen at the whole-map
+  // zoom, between 32 (the old size) and 62 (about the real piece on its tile).
+  function meepleSize() {
+    const f = fitBox(), s = f ? f.s : vs.s;
+    return Math.round(Math.max(32, Math.min(62, 17 / s)));
+  }
   function renderBoard() {
     const g = S.game, st = g.st, svg = $('board');
     let s = '';
@@ -411,20 +440,24 @@
     let under = '';
     for (const k in st.board) { const [x, y] = k.split(',').map(Number); under += `M${x * 100} ${y * 100}h100v100h-100z`; }
     s += `<path class="t-shadow" d="${under}" transform="translate(6 10)" opacity=".16"/><path class="t-shadow" d="${under}" transform="translate(3.5 6)" opacity=".2"/><path class="t-edge" d="${under}" transform="translate(2 3)"/>`;
+    // Meeples keep a readable size on a big, zoomed-out map (up to about the real piece:
+    // ~60% of a tile), so they go on top of all the tiles in a layer of their own.
+    const ms = meepleSize();
+    let men = '';
     for (const k in st.board) {
       const [x, y] = k.split(',').map(Number), tl = st.board[k];
-      let extra = '';
-      if (tl.m) {
-        const f = T.TYPES[tl.t].rot[tl.r].feats[tl.m[1]];
-        extra = RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? 44 : 32);
-      }
       const isLast = st.last && st.last.x === x && st.last.y === y;
       // Drop-in motion plays once per move, not on every redraw; a tile still flying in stays hidden.
       const anim = isLast && animatedAt !== st.moves;
       const cls = isLast && incomingAt === st.moves ? 'incoming' : anim ? 'placed' : '';
-      s += `<g class="${cls}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100, extra)}</g>`;
+      if (tl.m) {
+        const f = T.TYPES[tl.t].rot[tl.r].feats[tl.m[1]];
+        men += `<g class="${cls}"><g transform="translate(${x * 100} ${y * 100})">${RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? ms * 1.375 : ms)}</g></g>`;
+      }
+      s += `<g class="${cls}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100)}</g>`;
       if (isLast) s += `<rect class="last" x="${x * 100 + 2}" y="${y * 100 + 2}" width="96" height="96" rx="3" stroke="${RD.PLAYER[st.last.p]}"/>`;
     }
+    s += men;
     if (isHumanTurn()) {
       const R = getRanked();
       const best = {};
@@ -445,7 +478,7 @@
       }
       if (sel) {
         const f = sel.fi >= 0 ? T.TYPES[st.cur].rot[sel.r].feats[sel.fi] : null;
-        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? 44 : 32) : '';
+        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? ms * 1.375 : ms) : '';
         const turn = spinFrom('ghost', sel.x + ',' + sel.y, sel.r);
         // held just above its square: a bigger, softer shadow than the laid tiles
         s += `<rect x="${sel.x * 100 + 7}" y="${sel.y * 100 + 12}" width="100" height="100" rx="3" fill="#000" opacity=".3"/>`;
@@ -494,6 +527,7 @@
   function renderPlayers() {
     const g = S.game, st = g.st, me = meSeat(), wide = window.innerWidth >= 900;
     $('players').classList.toggle('many', g.seats.length >= 4);   // phone: colour + score only (names cut to "Y..")
+    $('players').dataset.n = g.seats.length;   // (phone on its side: plates in rows of 2 or 3)
     // Far side of the table: everyone's score plate; the others' meeples stand under theirs (yours are at your edge).
     $('players').innerHTML = g.seats.map((k, i) => `
       <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}" data-seat="${i}" style="--pc:${RD.PLAYER[i]}">
@@ -598,8 +632,8 @@
       src.rect, { left: p0.x, top: p0.y, width: size, height: size }, 420).then(() => {
       if (incomingAt === st.moves) incomingAt = -1;
       if (my !== gen) return;
-      const g = document.querySelector('#world .incoming');
-      if (g) { g.classList.remove('incoming'); g.classList.add('placed'); }
+      // (the tile and, in its own layer, its meeple)
+      for (const g of document.querySelectorAll('#world .incoming')) { g.classList.remove('incoming'); g.classList.add('placed'); }
     });
   }
   // Before a move by someone not at this device: where their tile is now (the hand).
@@ -875,7 +909,7 @@
       const f = from || vs;
       const wx = (px - f.tx) / f.s, wy = (py - f.ty) / f.s;
       ns = Math.min(maxZoom(), ns);
-      vs.s = ns; vs.tx = px - wx * ns; vs.ty = py - wy * ns; vs.user = true;
+      vs.s = ns; vs.tx = px - wx * ns; vs.ty = py - wy * ns; vs.user = true; vs.focus = false;
       clampView(); applyView(true);
     }
     $('zoom-in').onclick = () => zoomStep(1.25);
@@ -883,7 +917,7 @@
     $('zoom-fit').onclick = toAuto;
     function zoomStep(k) {
       const px = svg.clientWidth / 2, py = svg.clientHeight / 2, wx = (px - vs.tx) / vs.s, wy = (py - vs.ty) / vs.s;
-      vs.s = Math.min(maxZoom(), vs.s * k); vs.tx = px - wx * vs.s; vs.ty = py - wy * vs.s; vs.user = true;
+      vs.s = Math.min(maxZoom(), vs.s * k); vs.tx = px - wx * vs.s; vs.ty = py - wy * vs.s; vs.user = true; vs.focus = false;
       clampView(); applyView();
     }
     // The board area changes size (rotation, toolbar, panels): auto re-fits, manual stays in bounds.
@@ -907,7 +941,11 @@
     const rect = $('board').getBoundingClientRect();
     const wx = (cx - rect.left - vs.tx) / vs.s, wy = (cy - rect.top - vs.ty) / vs.s;
     const x = Math.floor(wx / 100), y = Math.floor(wy / 100);
-    if (!legalRots(x, y).length) { sfx('error'); return; }   // a tile can't go there
+    if (!legalRots(x, y).length) {   // a tile can't go there (in a tiny crowded map: look closer)
+      if (focusOn(wx, wy)) applyView(); else sfx('error');
+      return;
+    }
+    focusOn(x * 100 + 50, y * 100 + 50);
     pickCell(x, y);
   }
   function legalRots(x, y) { const st = S.game.st; return [0, 1, 2, 3].filter((r) => E.canPlace(st, x, y, st.cur, r)); }
@@ -1165,6 +1203,7 @@
       const best = getRanked()[0];
       sel = { x: best.x, y: best.y, r: best.r, fi: best.fi, big: !!best.big };
       showBest = { x: best.x, y: best.y };
+      focusOn(best.x * 100 + 50, best.y * 100 + 50);
       sfx('cardSlide', { pitch: 0.6, vol: 0.6 });
       renderBoard(); renderHand(); renderDock(); return;
     }
