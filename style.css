@@ -71,8 +71,10 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .pchip .plate svg { width: 18px; height: 18px; flex: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
 .pchip .nm { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: rgba(246,239,220,.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
 .pchip .sc { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.sup { display: flex; justify-content: center; align-items: flex-end; height: 15px; padding-left: 3px; }
-.sup .tbl-meeple { margin-left: 0; }   /* a little apart, so they read as pieces, not a star rating */
+.sup { display: flex; justify-content: center; align-items: flex-end; min-height: 15px; }
+/* the meeples left: a small loose crowd of standing pieces (app.js supply()) */
+.crowd { position: relative; display: block; flex: none; }
+.crowd .tbl-meeple { position: absolute; }
 /* The kit's drop-shadow filter on 20-30 masked meeples drops WebKit to ~2 frames a second
    (measured); a plain shadow ellipse under each one looks the same and costs nothing. */
 #view-play .tbl-meeple { filter: none; }
@@ -82,8 +84,17 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 @media (max-width: 899px) {
   .players.many .pchip .nm { display: none; }
   .players.many .pchip .plate { justify-content: space-between; padding: 3px 5px 3px 3px; gap: 2px; }
-  .players.many .sup .tbl-meeple { margin-left: -3px; }
+  /* 5-6 players: the plate's coloured edge is the player marker, so a 3-digit score has room */
+  .players.many { gap: 4px; }
+  .players.many .pchip .plate { justify-content: center; padding: 3px 3px 3px 4px; border-left: 4px solid var(--pc); }
+  .players.many .pchip .plate svg { display: none; }
+  .players.many .pchip .sc { font-size: 15px; }
+  .players.many ~ .stack-box .deck2 { margin-right: -26px; }
 }
+/* the score track on a phone: the real loop of 50 squares, squeezed to a strip of 25 x 2 */
+.ptrack { flex: none; padding: 2px 10px 0; }
+.ptrack svg { width: 100%; max-width: 560px; display: block; margin: 0 auto; border-radius: 4px; box-shadow: 1px 2px 0 #2e1d0d, 2px 5px 8px rgba(0,0,0,.45); }
+.ptrack .tm, .track .tm { transition: transform .6s cubic-bezier(.3,.7,.3,1); }
 /* the face-down tile stack */
 .stack-box { flex: none; padding: 10px 6px 4px 0; display: flex; align-items: flex-end; gap: 6px; }
 .deck2 { rotate: -6deg; margin-right: -12px; translate: 0 -3px; }   /* a second stack, half behind the first */
@@ -119,15 +130,18 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .board .ghost-ring { fill: none; stroke: #fff; stroke-width: 3.5; }
 .board .best-ring { fill: none; stroke: var(--good); stroke-width: 5; stroke-dasharray: 10 6; }
 .board-tools { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
+/* zoom: three round wooden tokens lying on the table, the sign burnt in */
 .board-tools button {
-  width: 42px; height: 42px; border-radius: 10px; background: rgba(24,16,9,.62); border: 1px solid rgba(255,226,170,.2);
-  font-weight: 700; font-size: 18px; color: var(--wood-mute); box-shadow: 0 2px 5px rgba(0,0,0,.35);
+  width: 42px; height: 42px; border-radius: 50%; border: 1px solid #5a3d1c;
+  background: radial-gradient(circle at 34% 28%, #e2c08a, #b98d55 52%, #94693a);
+  font-weight: 800; font-size: 21px; line-height: 1; color: #4a2f12; text-shadow: 0 1px 0 rgba(255,236,196,.55);
+  box-shadow: inset 0 1px 1px rgba(255,244,214,.6), inset 0 -2px 3px rgba(70,42,14,.45), 0 3px 0 #5e3f1d, 0 5px 8px rgba(0,0,0,.45);
 }
-.board-tools #zoom-fit { font-size: 13px; opacity: .45; transition: opacity .15s, color .15s, border-color .15s; }
-.board-tools #zoom-fit.lit { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.board-tools #zoom-fit { font-size: 12.5px; opacity: .55; transition: opacity .15s, box-shadow .15s; }
+.board-tools #zoom-fit.lit { opacity: 1; box-shadow: 0 0 0 2.5px var(--accent), inset 0 1px 1px rgba(255,244,214,.6), inset 0 -2px 3px rgba(70,42,14,.45), 0 3px 0 #5e3f1d, 0 5px 8px rgba(0,0,0,.45); }
 /* Phone on its side: the board is too short for the column, so the buttons sit in a row. */
 @media (orientation: landscape) and (max-height: 500px) { .board-tools { flex-direction: row; } }
-.board-tools button:active { transform: scale(.94); background: rgba(24,16,9,.8); }
+.board-tools button:active { transform: translateY(2px); box-shadow: inset 0 1px 1px rgba(255,244,214,.6), inset 0 -2px 3px rgba(70,42,14,.45), 0 1px 0 #5e3f1d, 0 2px 4px rgba(0,0,0,.45); }
 .floaters { position: absolute; inset: 0; pointer-events: none; }
 .floater {
   position: absolute; transform: translate(-50%, -50%); font-weight: 800; font-size: 20px;
@@ -152,8 +166,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .hand .spot.on circle.halo { stroke-opacity: .3; }
 .hand .spot.on circle.ring { fill: none; stroke: var(--warm); }
 .hand.empty { box-shadow: none; border: 2px dashed rgba(255,240,210,.25); background: rgba(0,0,0,.08); }
-.mine { display: flex; justify-content: center; align-items: flex-end; height: 18px; padding-left: 3px; }
-.mine .tbl-meeple { margin-left: 1px; }
+.mine { display: flex; justify-content: center; align-items: flex-end; min-height: 18px; }
 .left { font-size: 11.5px; color: var(--wood-mute); font-variant-numeric: tabular-nums; }
 .left:empty { display: none; }
 .dock-main { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; }
@@ -173,16 +186,16 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 @media (max-width: 359px) {
   .dock { gap: 9px; padding: 8px 9px 10px; }
   .hand { width: 80px; height: 80px; }
-  .mine .tbl-meeple { margin-left: -1px; }
   .dock-btns { gap: 5px; }
   .dock-btns .btn { min-width: 54px; padding: 4px 8px; }
 }
 /* Phone on its side: your edge moves to the right so the map keeps the height */
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 899px) {
-  #view-play { display: grid; grid-template-columns: 1fr 260px; grid-template-rows: auto 1fr; }
+  #view-play { display: grid; grid-template-columns: minmax(0, 1fr) 260px; grid-template-rows: auto auto 1fr; }
   .far { grid-column: 1 / 3; grid-row: 1; padding: 4px 10px 2px; }
-  .board-wrap { grid-column: 1; grid-row: 2; }
-  .dock { grid-column: 2; grid-row: 2; align-self: end; grid-template: "h s" auto "h u" 1fr "b b" auto / auto minmax(0, 1fr); gap: 6px 10px; padding: 6px 10px 8px 4px; }
+  .ptrack { grid-column: 1; grid-row: 2; }
+  .board-wrap { grid-column: 1; grid-row: 3; }
+  .dock { grid-column: 2; grid-row: 2 / 4; align-self: end; grid-template: "h s" auto "h u" 1fr "b b" auto / auto minmax(0, 1fr); gap: 6px 10px; padding: 6px 10px 8px 4px; }
   .dock-main { display: contents; }
   .hand-box { grid-area: h; }
   .hand { width: 76px; height: 76px; }
@@ -198,7 +211,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 .final h2 { margin: 0 0 2px; font-size: 22px; }
 .final table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; margin: 10px 0; }
 .final th, .final td { padding: 5px 4px; text-align: right; border-bottom: 1px solid var(--line); }
-.final th:first-child, .final td:first-child { text-align: left; }
+.final th:first-child, .final td:first-child { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .final th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .final td.tot { font-weight: 800; }
 .race { width: 100%; height: 130px; display: block; margin: 4px 0 8px; }
@@ -343,7 +356,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 }
 @keyframes up { from { transform: translateY(40px); opacity: .4; } }
 @keyframes fade { from { opacity: 0; } }
-.sheet .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.sheet .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; position: sticky; bottom: calc(-16px - env(safe-area-inset-bottom)); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--card); }
 .pop {
   position: fixed; z-index: 60; max-width: min(320px, calc(100vw - 24px)); background: #232838; border: 1px solid #3a4258;
   border-radius: 10px; padding: 10px 12px; font-size: 13.5px; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: fade .15s;
@@ -356,7 +369,8 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   .tabs button { flex: none; padding: 12px 0; font-size: 12px; }
   .view { grid-column: 2; grid-row: 1; }
   /* laptop: your edge along the bottom of the table, the score track and helpers in a slim side panel */
-  #view-play { display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr auto; }
+  #view-play { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto 1fr auto; }
+  .ptrack { display: none; }
   .far { grid-column: 1; grid-row: 1; padding: 10px 14px 6px; gap: 14px; }
   .players { gap: 10px; }
   .pchip { flex: 0 1 190px; }
@@ -364,12 +378,12 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   .pchip .plate svg { width: 22px; height: 22px; }
   .pchip .sc { font-size: 21px; }
   .pchip .nm { font-size: 13px; }
-  .sup { height: 18px; }
+  .sup { min-height: 18px; }
   .deck { --card-w: 50px; }
   .board-wrap { grid-column: 1; grid-row: 2; }
   .dock { grid-column: 1; grid-row: 3; gap: 18px; padding: 8px 18px 14px; grid-template-columns: auto minmax(0, 560px); justify-content: center; }
   .hand { width: 118px; height: 118px; }
-  .mine { height: 22px; }
+  .mine { min-height: 22px; }
   .status { font-size: 18px; height: 23px; }
   .sub { font-size: 14px; height: 40px; }
   .dock-btns .btn { font-size: 15px; padding: 4px 16px; }
@@ -378,7 +392,6 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
     background: rgba(12,8,4,.42); border-left: 1px solid rgba(255,226,170,.12); box-shadow: inset 8px 0 18px -10px rgba(0,0,0,.6);
   }
   .track svg { width: 100%; display: block; border-radius: 6px; box-shadow: 1px 2px 0 #2e1d0d, 3px 7px 12px rgba(0,0,0,.5); }
-  .track .tm { transition: transform .6s cubic-bezier(.3,.7,.3,1); }
   .side-extra { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
   .side-extra h3 { color: rgba(243,234,216,.82); }
   .side-extra .muted { color: rgba(243,234,216,.82); }

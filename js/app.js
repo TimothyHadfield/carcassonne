@@ -115,6 +115,7 @@
   let netBusy = false;
   let sentAt = -1;         // move number my last online move was sent at; my turn waits until the room moves on
   let localBackup = null;  // the local game, put back when the room ends
+  let notice = null;       // a one-off line under the status ({g, at, text}), gone after the next move
   const inRoom = () => !!(netSnap && ['lobby', 'playing', 'finished', 'joining'].includes(netSnap.status));
   function getNet() {
     if (net) return net;
@@ -135,6 +136,7 @@
     if (live) {
       const g = S.game;
       if (!g || !g.online) {
+        gen++;   // a local computer move still pending must not land in the room
         localBackup = S.game;
         S.game = { online: true, st: snap.pub, seats: netSeats(snap), lost: [], race: [snap.pub.scores.slice()], log: [] };
         sel = null; ranked = null; rankedAt = -1; study = null; showBest = null; vs.user = false;
@@ -150,6 +152,7 @@
       g.st = snap.pub; g.seats = netSeats(snap);
       if (src && g.st.last) incomingAt = g.st.moves;
       if (moved) {
+        noteAside(prev, g);
         g.race.push(g.st.scores.slice());
         if (g.st.last) for (const e of g.st.last.ev) g.log.push({ ...e, by: g.st.last.p });
         logFinal(g);
@@ -161,7 +164,13 @@
       if (moved && g.st.last) moveFx(prev, g);
       return;
     }
-    if (!inRoom() && S.game && S.game.online) leaveOnline(true);
+    if (!inRoom() && S.game && S.game.online) {
+      leaveOnline(true);
+      if (S.game && (snap.status === 'closed' || snap.status === 'left')) {
+        notice = { g: S.game, at: S.game.st.moves, text: snap.status === 'closed' ? 'The room closed. Back to your game.' : 'You are out of the room. Back to your game.' };
+        if (S.tab === 'play') renderDock();
+      }
+    }
     if (S.tab === 'settings') renderSettings();
   }
   function leaveOnline(already) {
@@ -213,6 +222,7 @@
 
   // ================================================================ PLAY
   let gen = 0;          // bumps on every new game so old timers can't act on it
+  let leader = true;    // two tabs of one game: only the one that moved last runs the computers
   let sel = null;       // {x,y,r,fi} tentative placement
   let handR = 0;
   let ranked = null, rankedAt = -1;
@@ -270,9 +280,10 @@
     }
     if (isHumanTurn() || g.online) { renderPlay(); turnFx(); return; }   // online: the host's browser runs the computers
     renderPlay();
+    if (!leader) return;   // another tab of this game runs the computers
     const my = gen;
     setTimeout(() => {
-      if (my !== gen || !S.game || S.game.st.over || isHumanTurn()) return;
+      if (my !== gen || !S.game || S.game.st.over || isHumanTurn() || !leader) return;
       const a = AI.choose(S.game.st, S.game.seats[S.game.st.turn]);
       submit(a);
     }, 750);
@@ -300,6 +311,8 @@
     const p = g.st.turn, prev = g.st;
     const src = human ? null : handSource(g.st);   // a computer's tile flies from the middle to its square
     g.st = E.apply(g.st, a);
+    noteAside(prev, g);
+    leader = true;   // this tab moved: it runs the computers now (see the storage listener)
     if (src) incomingAt = g.st.moves;
     g.race.push(g.st.scores.slice());
     const evs = g.st.last.ev.map((e) => ({ ...e, by: p }));
@@ -456,26 +469,37 @@
     return you.length === 1 ? you[0] : -1;
   }
   // A player's meeples standing on the table: wooden pieces (css/table.css), the big one taller.
+  // They stand in a small loose crowd (a back row and a front row in the gaps), like pieces
+  // set down in front of a player, not lined up like a star rating.
   function supply(p, size) {
     const st = S.game.st, n = st.meeples[p], big = st.opts.ic ? st.big[p] : 0;
-    // a loose group, not a neat row: each piece a little turned and nudged (seeded, so it never jiggles on redraw)
-    const one = (s, i) => {
-      const j = self.TABLE ? TABLE.jitter('m' + p, i, { rot: 10, off: 1.6 }) : { x: 0, y: 0, r: 0 };
-      return `<span class="tbl-meeple" style="--piece:${RD.PLAYER[p]};--size:${s}px;rotate:${j.r}deg;translate:${j.x / 2}px ${j.y}px"></span>`;
+    if (!n && !big) return '<span class="none">0</span>';
+    const back = Math.ceil(n / 2), step = size * (size <= 10 ? 0.75 : 0.9), drop = size * 0.42, B = big ? Math.round(size * 1.4) : 0;
+    const lead = B ? B * 0.8 : 0;
+    const one = (sz, i, x, y, z) => {
+      // each piece a little turned and nudged (seeded, so it never jiggles on redraw)
+      const j = self.TABLE ? TABLE.jitter('m' + p, i, { rot: 9, off: 1 }) : { x: 0, y: 0, r: 0 };
+      return `<span class="tbl-meeple" style="--piece:${RD.PLAYER[p]};--size:${sz}px;left:${(x + j.x / 2).toFixed(1)}px;top:${(y + j.y / 2).toFixed(1)}px;rotate:${j.r}deg;z-index:${z}"></span>`;
     };
-    let out = big ? one(Math.round(size * 1.4), 9) : '';
-    for (let i = 0; i < n; i++) out += one(size, i);
-    return out || '<span class="none">0</span>';
+    let out = '';
+    for (let i = 0; i < n; i++) {
+      const front = i >= back, k = front ? i - back : i;
+      out += one(size, i, lead + k * step + (front ? step / 2 : 0), front ? drop : 0, front ? 2 : 1);
+    }
+    const h = Math.max(n > 1 ? drop + size : size, B);
+    if (B) out += one(B, 9, 0, h - B, 3);
+    const w = lead + Math.max(back * step, (n - back) * step + step / 2) + (size - step);
+    return `<span class="crowd" style="width:${Math.ceil(w)}px;height:${Math.ceil(h)}px">${out}</span>`;
   }
   function renderPlayers() {
     const g = S.game, st = g.st, me = meSeat(), wide = window.innerWidth >= 900;
     $('players').classList.toggle('many', g.seats.length >= 4);   // phone: colour + score only (names cut to "Y..")
     // Far side of the table: everyone's score plate; the others' meeples stand under theirs (yours are at your edge).
     $('players').innerHTML = g.seats.map((k, i) => `
-      <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}" data-seat="${i}">
+      <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}" data-seat="${i}" style="--pc:${RD.PLAYER[i]}">
         <div class="plate"><svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
         <span class="nm">${esc(seatName(i))}</span><span class="sc">${st.scores[i]}</span></div>
-        <div class="sup" title="Meeples left">${i === me ? '' : supply(i, wide ? 14 : g.seats.length >= 5 ? 10 : 12)}</div>
+        <div class="sup" title="Meeples left">${i === me ? '' : supply(i, wide ? 14 : g.seats.length >= 5 ? 9 : 12)}</div>
       </div>`).join('');
     // Your meeples, standing in front of you (pass the phone: whoever's turn it is).
     const mine = me >= 0 ? me : g.seats[st.turn] === 'you' ? st.turn : -1;
@@ -490,32 +514,34 @@
     $('deck').setAttribute('aria-label', `${left} tiles left`);
   }
 
-  // Laptop: the score track board, 0-49 around the edge like the real one; each player's
-  // meeple stands on their score (lying down with a 50 / 100 token past a lap).
-  const TRACK = (() => {
-    const out = [], C = 16, R = 11;
+  // The score track, 0-49 around the edge like the real board; each player's meeple stands
+  // on their score (lying down with a 50 / 100 token past a lap). Laptop: the board with its
+  // picture (16 x 11 squares). Phone: the same loop squeezed to a strip of 25 x 2 squares.
+  const loop = (C, R) => {
+    const out = [];
     for (let i = 0; i < C; i++) out.push([i, 0]);
     for (let j = 1; j < R; j++) out.push([C - 1, j]);
     for (let i = C - 2; i >= 0; i--) out.push([i, R - 1]);
     for (let j = R - 2; j >= 1; j--) out.push([0, j]);
     return out;   // 50 squares, 0 top-left, clockwise
-  })();
-  let trackFor = '';
-  function renderTrack() {
-    const g = S.game, st = g.st, el = $('track'), Z = 18;
+  };
+  const TRACKS = { track: { sq: loop(16, 11), W: 296, H: 206, pic: true }, ptrack: { sq: loop(25, 2), W: 458, H: 44, pic: false } };
+  function renderTrack(id) {
+    id = id || 'track';
+    const g = S.game, st = g.st, el = $(id), Z = 18, TR = TRACKS[id], TRACK = TR.sq;
+    if (!el) return;
     const key = g.seats.length + ':' + gen;
-    if (trackFor !== key) {
-      trackFor = key;
+    if (el.dataset.key !== key) {
+      el.dataset.key = key;
       const sq = TRACK.map(([i, j], n) => `<g transform="translate(${i * Z + 4} ${j * Z + 4})"><rect width="${Z - 1}" height="${Z - 1}" rx="2" fill="${n % 5 ? '#efe4c7' : '#e3cf9c'}" stroke="#8a6a3c" stroke-width=".8"/>` +
         `<text x="${(Z - 1) / 2}" y="${(Z - 1) / 2 + 0.5}" font-size="${n > 9 ? 7 : 8}" font-weight="700" fill="#6b4f2a" text-anchor="middle" dominant-baseline="central">${n}</text></g>`).join('');
       // the picture in the middle: a few of our own tiles, like the landscape on the real board
       // (a monastery road, the start tile, a straight, a crossing under a city, a bend)
       const pic = [['A', 3], ['D', 0], ['U', 1], ['L', 0], ['V', 0]];
-      const art = pic.map(([id, r], c) => { const t = T.TYPES.find((q) => q.id === id); return t ? RD.tile(t.idx, r, 33 + c * 46, 80, 46) : ''; }).join('');
-      el.innerHTML = `<svg viewBox="0 0 296 206" aria-hidden="true">
-        <rect x="1" y="1" width="294" height="204" rx="6" fill="#6f4b26" stroke="#3f2914" stroke-width="2"/>
-        <rect x="22" y="22" width="252" height="162" rx="3" fill="url(#grass)"/>${art}
-        <rect x="22" y="22" width="252" height="162" rx="3" fill="url(#bevel)"/>${sq}
+      const art = TR.pic ? pic.map(([id2, r], c) => { const t = T.TYPES.find((q) => q.id === id2); return t ? RD.tile(t.idx, r, 33 + c * 46, 80, 46) : ''; }).join('') : '';
+      const inner = TR.pic ? `<rect x="22" y="22" width="252" height="162" rx="3" fill="url(#grass)"/>${art}<rect x="22" y="22" width="252" height="162" rx="3" fill="url(#bevel)"/>` : '';
+      el.innerHTML = `<svg viewBox="0 0 ${TR.W} ${TR.H}" aria-hidden="true">
+        <rect x="1" y="1" width="${TR.W - 2}" height="${TR.H - 2}" rx="${TR.pic ? 6 : 4}" fill="#6f4b26" stroke="#3f2914" stroke-width="2"/>${inner}${sq}
         ${g.seats.map((_, p) => `<g class="tm" data-p="${p}"></g>`).join('')}</svg>`;
     }
     // where each player stands; players on the same square stand side by side
@@ -621,6 +647,18 @@
     return -((r - was.r + 4) % 4) * 90;
   }
 
+  // A drawn tile that fits nowhere is set aside (rules); say so, or the stack just shrinks by two.
+  function noteAside(prev, g) {
+    const n = (g.st.discards || []).length - (prev.discards || []).length;
+    if (n > 0) g.aside = { at: g.st.moves, n };
+  }
+  function asideText(g) {
+    const a = g.aside;
+    if (!a || a.at !== g.st.moves) return '';
+    return a.n > 1 ? `${a.n} tiles fit nowhere: set aside.` : 'A tile fit nowhere: set aside.';
+  }
+  function noticeText(g) { return notice && notice.g === g && notice.at === g.st.moves ? notice.text : ''; }
+
   // End-of-game scoring (farms, unfinished features) goes into the log once.
   function logFinal(g) {
     if (!g.st.over || !g.st.final || g.loggedFinal) return;
@@ -651,9 +689,10 @@
       return;
     }
     const lastEv = st.last && st.last.ev.length ? st.last.ev.map(describe).join(' · ') : '';
+    const extra = [noticeText(g), asideText(g)].filter(Boolean).join(' ');
     if (!human) {
       status.textContent = g.online && g.seats[st.turn] === 'you' ? 'Sending…' : `${seatName(st.turn)} is placing…`;
-      sub.textContent = lastEv;
+      sub.textContent = [extra, lastEv].filter(Boolean).join(' · ');
       return;
     }
     const multi = g.seats.filter((k) => k === 'you').length > 1;
@@ -667,9 +706,13 @@
         h += ` · total <b class="w">${tot.toFixed(1)}</b>`;
       } else if (S.set.hints && R.length) h = `Best spot ${fmt(R[0].v)} expected points <button class="q" data-help="hints">?</button>`;
       else if (lastEv) h = esc(lastEv);
-      sub.innerHTML = h;
+      sub.innerHTML = extra ? esc(extra) + (h ? ' ' + h : '') : h;
     } else {
-      status.textContent = sel.fi >= 0 ? 'Meeple set. Place it?' : 'Tap a circle for a meeple';
+      // no circles on the tile: say why instead of asking for one
+      const any = E.hasMeeple(st, st.turn, false) || E.hasMeeple(st, st.turn, true);
+      status.textContent = sel.fi >= 0 ? 'Meeple set. Place it?'
+        : E.meepleSpots(st, sel.x, sel.y, sel.r).length ? 'Tap a circle for a meeple'
+        : any ? 'No meeple spot here. Place it?' : 'No meeples left. Place it?';
       if (S.set.hints) {
         const v = valueOf(sel);
         sub.innerHTML = `This move <b class="${v >= R[0].v - 0.05 ? 'g' : 'w'}">${fmt(v)}</b> · best ${fmt(R[0].v)} <button class="q" data-help="hints">?</button>`;
@@ -700,7 +743,7 @@
     renderBoard();
     renderHand();
     renderDock();
-    if (window.innerWidth >= 900) { renderTrack(); renderSide(); }
+    if (window.innerWidth >= 900) { renderTrack(); renderSide(); } else renderTrack('ptrack');
   }
 
   function floatEvents(evs, gap) {
@@ -1047,10 +1090,25 @@
     <p class="muted" style="margin:8px 0 0">Going first: Hard vs Hard, the first player wins 55.5% (1000 games). With 4 players a fair share is 25%.</p>`;
 
   // ================================================================ sheet + help popup
-  function openSheet(html) { $('sheet').innerHTML = html; $('sheet-back').hidden = false; }
-  function closeSheet() { $('sheet-back').hidden = true; $('sheet').innerHTML = ''; }
+  // The results sheet and the "?" bubble each get a history step, so Back closes them first
+  // (and only then goes to the tab you were on). Closing one by hand takes its step back out.
+  let popSkip = false, afterPop = null;
+  const overlayStep = () => { if (!(history.state && history.state.overlay)) history.pushState({ overlay: 1 }, '', location.hash); };
+  function dropStep() { if (history.state && history.state.overlay) { popSkip = true; history.back(); } }
+  function openSheet(html) { $('sheet').innerHTML = html; $('sheet-back').hidden = false; $('pop').hidden = true; overlayStep(); }
+  function closeSheet(fromBack) {
+    if ($('sheet-back').hidden) return;
+    $('sheet-back').hidden = true; $('sheet').innerHTML = '';
+    if (!fromBack) dropStep();
+  }
+  function hidePop(fromBack) {
+    if ($('pop').hidden) return;
+    $('pop').hidden = true;
+    if (!fromBack && $('sheet-back').hidden) dropStep();
+  }
   function showHelp(btn) {
     const pop = $('pop');
+    if ($('sheet-back').hidden) overlayStep();
     pop.textContent = HELP[btn.dataset.help] || '';
     pop.hidden = false;
     const r = btn.getBoundingClientRect();
@@ -1062,6 +1120,7 @@
 
   // ================================================================ tabs + events
   function setTab(t, push) {
+    if (popSkip && push !== false) { afterPop = t; return; }   // a closing bubble is still stepping back: go after it
     if (t === 'play' && S.tab !== 'play') vs.user = false;   // back on the board: auto fit
     S.tab = t; save();
     document.querySelectorAll('#tabs button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === t));
@@ -1081,7 +1140,7 @@
   document.addEventListener('click', (e) => {
     const b = e.target.closest('button, [data-fi]');
     const pop = $('pop');
-    if (!pop.hidden && !(b && b.dataset.help)) pop.hidden = true;
+    if (!pop.hidden && !(b && b.dataset.help)) hidePop();
     if (e.target === $('sheet-back')) { closeSheet(); return; }
     if (!b) return;
     const d = b.dataset;
@@ -1109,7 +1168,17 @@
       sfx('cardSlide', { pitch: 0.6, vol: 0.6 });
       renderBoard(); renderHand(); renderDock(); return;
     }
-    if (b.id === 'btn-new' || b.id === 'btn-new2' || b.id === 'btn-new3') { if (b.id === 'btn-new') setTab('play'); newGame(); return; }
+    if (b.id === 'btn-new') {
+      // a game under way (or an online room) isn't thrown away by one stray tap
+      const live = S.game && !S.game.st.over && (S.game.st.moves > 0 || S.game.online);
+      if (live && !b.classList.contains('armed')) {
+        b.classList.add('armed'); b.textContent = 'Start over?';
+        setTimeout(() => { if (b.isConnected) { b.classList.remove('armed'); b.textContent = 'New game'; } }, 4000);
+        return;
+      }
+      setTab('play'); newGame(); return;
+    }
+    if (b.id === 'btn-new2' || b.id === 'btn-new3') { newGame(); return; }
     if (b.id === 'btn-results') { showFinal(); return; }
     // ---- tiles
     if (d.t !== undefined) {
@@ -1129,7 +1198,7 @@
     if (d.adj !== undefined) { S.table.scores[+d.adj] = Math.max(0, S.table.scores[+d.adj] + +d.d); save(); renderScores(); return; }
     if (d.kind) { S.table.kind = d.kind; save(); renderScores(); return; }
     if (d.step) { tally[d.step] = Math.max(+d.min, Math.min(+d.max, tally[d.step] + +d.d)); renderScores(); return; }
-    if (d.who !== undefined) { const i = +d.who; tally.m[i] = (tally.m[i] + 1) % 4; renderScores(); return; }
+    if (d.who !== undefined) { const i = +d.who; tally.m[i] = (tally.m[i] + 1) % 8; renderScores(); return; }
     if (b.id === 'sc-go') {
       const top = Math.max(...tally.m);
       if (top <= 0) return;
@@ -1203,10 +1272,31 @@
     save();
   });
   window.addEventListener('popstate', () => {
+    if (popSkip) { popSkip = false; const t = afterPop; afterPop = null; if (t) setTab(t); return; }
     const t = (location.hash || '#play').slice(1);
-    if (!$('sheet-back').hidden) { closeSheet(); }
+    // Back with the results sheet or a "?" bubble open: close it and stay put
+    if (!$('sheet-back').hidden || !$('pop').hidden) { closeSheet(true); hidePop(true); return; }
     if (['play', 'tiles', 'scores', 'settings'].includes(t)) setTab(t, false);
   });
+  // Two tabs of the same game: a tab that sees the other one save takes its game, so
+  // neither wipes the other's moves. Only the tab that moved last (or was touched) runs the computers.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY || !e.newValue || (S.game && S.game.online)) return;
+    let n;
+    try { n = JSON.parse(e.newValue); } catch (err) { return; }
+    if (!n || typeof n !== 'object') return;
+    S.set = Object.assign(S.set, n.set); S.table = Object.assign(S.table, n.table);
+    if (JSON.stringify(n.game || null) === JSON.stringify(S.game)) { if (S.tab !== 'play') render(); return; }
+    S.game = n.game || null;
+    leader = false;
+    gen++; sel = null; ranked = null; rankedAt = -1; study = null; showBest = null; incomingAt = -1; handKey = null;
+    if (!S.game) return;
+    render();
+    tick();
+  });
+  const lead = () => { if (leader) return; leader = true; if (S.game && !S.game.st.over && !isHumanTurn()) tick(); };
+  document.addEventListener('pointerdown', lead, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) lead(); });
   window.addEventListener('resize', () => { if (S.tab === 'play' && S.game) { if (!vs.user) fit(); renderPlay(); } });
 
   // ---------------------------------------------------------------- boot

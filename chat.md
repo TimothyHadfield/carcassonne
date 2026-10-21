@@ -31,3 +31,9 @@
 - **Verified:** engine 164, odds 15, online 18, zoom 60/60, fx 49/49; before/after screenshots of setup, mid, late (4 players), end at 393, 320, 659x393 and 1280 (WebKit), 0 console errors, no overflow; idle frame rate measured equal to before (42-44 fps) after replacing the kit meeple's drop-shadow filter (2 fps with it).
 - **Review round (2 read-only reviews):** fixed meeple supplies packed like star ratings (spaced, seeded tilt), one stack -> two face-down stacks, phone on its side puts your edge bottom-right, brighter laptop panel text. Left as is (Tim's call or out of scope): no score track on phone, zoom buttons look like app controls, tab bar.
 - **Open:** real iPhone look and feel; two-browser online run.
+
+## 2026-10-20 — edge pass (weird situations)
+- **Asked:** Tim (all games): "Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird." Plus the reviewer's leftovers: meeples like star ratings, no phone score track, app-like zoom buttons.
+- **Built:** 50 scenarios listed and tested; fixes: no-meeples status, set-aside notice, Back closes sheet/bubble first, "Start over?" guard on New game, two-tab sync, pending computer move cancelled when a room starts, room-closed notice, tally to 7, 6-player plates at 320/393, laptop grid with 6 plates, sticky results buttons; meeple crowds, phone score strip (25 x 2), wooden zoom tokens; `_table` 1.0.1 recopied + `.gitattributes`.
+- **Verified:** new `tests/edge.ui.mjs` 121/121 (25 fails on old code); engine 164, odds 15, online 18, zoom 60, fx 49; screenshots at 320, 393, 659x393, 1280, 1920, 640x400 (WebKit), no overflow, no errors; re-render time measured not slower (181 vs 251 ms median, noisy machine).
+- **Open:** online fixes only with a stand-in room; real iPhone.
