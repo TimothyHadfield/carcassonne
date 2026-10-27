@@ -78,6 +78,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 | Other buttons | `tap` (fx auto clicks; not Rotate/Place/Hint/tiles grid) | - |
 
 ## Traps
+- **online.js cache stamp (2026-10-27):** every import of `js/online.js` uses `?v=a3d0418b`, the `_online` content stamp. After a re-copy: put the new stamp from `node ../_online/tools/stamp.mjs` there, bump the importing file's `?v=` (and pwa.js `data-version`), then `node ../_online/tools/stamp.mjs --check .` must say OK.
 - `js/fx.js` is a byte copy of `Board and Card Games/_fx/fx.js`: never edit it here; game sounds go in `js/sfx.js` (`FX.define`). Its `:where(.fx-set) .switch/.seg/.q` rules have class specificity, so `style.css` restyles them to match the game (`.fx-set ...`).
 - Animations off adds `fx-still` on `<html>` (all CSS animations/transitions off, no floaters); Fast adds `fx-fast`. `finalFx` runs once per game (`g.cheered`).
 - `tests/fx.ui.mjs` uses a fake AudioContext (WebKit on Windows has none) and spies on FX. fx.js is 1.0.3 (time-based confetti); recopy and bump `?v=` when `_fx` changes.
