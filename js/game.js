@@ -3,7 +3,7 @@
  *
  * Nothing in Carcassonne is secret except the order of the bag, so the public
  * view is the whole state with the bag sorted, and the private view is empty.
- * options: { farmers, farm, smallCity, river, ic, levels: ['hard', ...] per seat }.
+ * options: { farmers, farm, smallCity, river, ic, tb, hand, levels: ['hard', ...] per seat }.
  */
 (function () {
   'use strict';
@@ -24,6 +24,8 @@
         smallCity: o.smallCity === 2 ? 2 : 4,
         river: !!o.river,
         ic: !!o.ic && n <= 6,
+        tb: !!o.tb,
+        hand: !o.river && (o.hand === 2 || o.hand === 3) ? o.hand : 1,
         seed: Math.floor((rng || Math.random)() * 2 ** 31),
       });
       st.opts.levels = Array.from({ length: n }, (_, i) => (o.levels && o.levels[i]) || 'hard');

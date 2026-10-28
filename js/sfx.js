@@ -32,7 +32,7 @@
       if (a.m && b && !b.m) out.push({ key: k, t: a.t, r: a.r, fi: a.m[1], p: a.m[0], big: !!a.m[2] });
     }
     const L = next.last;
-    if (L && L.fi >= 0) {
+    if (L && L.fi >= 0 && !L.fig) {
       const k = L.x + ',' + L.y, b = next.board[k];
       if (b && !b.m) out.push({ key: k, t: L.t, r: L.r, fi: L.fi, p: L.p, big: !!L.big });
     }

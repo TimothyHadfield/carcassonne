@@ -126,7 +126,13 @@ try {
     await firstTap(page);
     await clearLog(page);
     await tapBoard(page, '#world > g');                     // a tile that's already down: illegal
+    // (when the map is drawn under 40 px a tile, that first tap zooms in on the spot instead,
+    // by design; the test was flaky on this. Tap the same tile again, now zoomed in, then Fit
+    // so the rest runs on the whole map as before.)
+    let zoomed = false;
+    if (!(await names(page)).includes('error')) { zoomed = true; await page.waitForTimeout(400); await tapBoard(page, '#world > g'); }
     ok((await names(page)).includes('error'), `tap on a taken square: error sound (${await names(page)})`);
+    if (zoomed) { await page.click('#zoom-fit'); await page.waitForTimeout(600); }
     await clearLog(page);
     await page.click('#btn-rotate');
     ok((await names(page)).join() === 'tileTurn', `rotate: tileTurn only, no extra tap (${await names(page)})`);

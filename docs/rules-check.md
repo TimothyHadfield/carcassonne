@@ -59,7 +59,28 @@ Sources:
 | 6th player | grey pieces | HiG | OK | |
 | Garden / later-edition extras | not in the first-edition set | JCZ | skipped | |
 
+## Traders & Builders (24 tiles, 2026-10-28; Settings → Rules, off by default)
+
+Sources: **[JCZ]** `traders_and_builders.xml` (tile layouts, counts, goods per city), **[WP]** Wikipedia expansion list, **[CAR]** annotated rules T&B section, **[BGA]** T&B help.
+
+| Item | Site | Sources | Status | Test |
+|---|---|---|---|---|
+| Tiles | 24 (Ta–Tx, own art) | JCZ, WP | OK | tb: 24 tiles |
+| Goods on city tiles | 20: 9 wine, 6 grain, 5 cloth | JCZ, CAR | OK | tb: goods counts |
+| Who gets goods | the player who lays the tile that finishes the city, meeple or not | CAR, BGA | OK | tb |
+| Goods at the end | most of each kind scores 10; a tie: all tied score 10 | CAR, BGA | OK | tb |
+| Builder | instead of a meeple, on a road/city where you have a meeple; extending that feature gives a 2nd tile straight away, never a 3rd; comes home when the feature is finished | CAR, BGA | OK | tb: extra turn, no third, comes home |
+| Pig | instead of a meeple, on a field where you have a farmer; that farm scores 4 per city (3rd ed.), 5 (1st ed. rule) | CAR, BGA | OK | tb: both editions |
+| Bridge and hedges | drawn; road, city and field areas follow the JCZ tile layouts (the bridge carries the road over the field) | JCZ | OK | tb: random games conserve figures |
+| Computers | Easy/Medium/Hard value goods, builder turns and the pig; ladder holds (200 games a pair: Hard–Med 72.8%, Med–Easy 93.0%) | — | OK | tb: computers use figures; `OPTS='{"tb":true}' node tools/ladder.js 200` |
+
+## House rules (off by default)
+
+| Item | Site | Sources | Status | Test |
+|---|---|---|---|---|
+| Farmers off | no meeples on fields | CAR | choice | engine |
+| Hand of tiles (2 or 3) | everyone holds 2 or 3 tiles, plays one, draws one; tiles that fit nowhere are set aside and replaced; ends when every hand and the bag are empty; not with the River | BGG house-rule threads, CAR (variant note) | choice | tb: hand rule; ladder hand 2: Hard–Med 82.8%, Med–Easy 94.0% |
+
 ## Not built
 
-- **Traders & Builders**: goods tokens, builder (double turn) and pig need new pieces and turn structure; parked so the base and the two most common add-ons are exact first.
 - Other expansions (Princess & Dragon, Tower, etc.).

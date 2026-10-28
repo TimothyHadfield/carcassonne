@@ -1,10 +1,10 @@
 # Carcassonne — progress
 
 ## START HERE
-Last updated: 2026-10-27 (improvement pass: Owners view, Undo, Replay, My stats, Daily, guided game, install/offline, farmers at every level, richer art). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
+Last updated: 2026-10-28 (wave 3: Traders & Builders, hand-of-tiles house rule, Learn videos in the rules sheet, 320 px Settings fix). Read this file, then `CLAUDE.md`, then `docs/rules-check.md` and `docs/ideas.md`. Live: https://timothyhadfield.github.io/carcassonne/
 
 ## Goal right now
-Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, online rooms, and a real-table companion. Waiting on Tim's feedback.
+Built and live. Base game + River + Inns & Cathedrals + Traders & Builders (+ hand-of-tiles house rule), vs 1–5 computers, online rooms, and a real-table companion. Waiting on Tim's feedback.
 
 ## Status
 | Part | State |
@@ -23,7 +23,7 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 | Edge pass (2026-10-20): 50 weird situations tested (list in the table below); fixes for Back, New game by mistake, two tabs, online room start/close, no meeples, tiles set aside, 6 players at 320 px and laptop, results buttons; reviewer leftovers: meeples stand as a little crowd, phone score track (25 x 2 strip), wooden zoom tokens; `_table` kit 1.0.1 recopied | done, `tests/edge.ui.mjs` 121/121 (25 fails on old code) |
 | Visibility pass (2026-10-21): meeples on the map at least ~12 px on a phone (own layer on top of the tiles, up to ~60% of a tile, about the real piece); a tap or Hint on a map with tiles under 40 px zooms in to that spot (64 px tiles), a tap on a taken square magnifies there, Place goes back to the whole map; zoom tokens get their own strip (column right or row on top, whichever leaves the map bigger), never over a tile; phone on its side: map takes the whole left under the track, plates + stack + your edge in the right column; laptop: map full height, your edge at the foot of the side panel | done, `tests/vis.ui.mjs` 40/40 WebKit + Chrome (18 fails on old code) |
 | Improvement pass (2026-10-27): hint numbers off by default (`set.hv` one-time switch-off for old saves); Owners flag token tints claimed cities/roads/farms (`ownersLayer` + `CarcRender.ownMask/ownShape`); Undo vs the computer (single human, not Daily/guided/online); end-of-game Replay (◀ Play ▶ Done; `g.acts` + seed rebuild); `_profile` My stats/achievements/Daily (vs Hard, standard rules) via `js/carcprofile.js`; `_coach` rules sheet + guided first game (`js/tutorial.js`, seed 20261046); `_pwa` install + offline; every level puts down farmers, Medium/Hard pick among near-best moves; original art: meadows, stone walls with battlements, gravel roads; score flash + meeple hop | done, `tests/improve.ui.mjs` 35/35 (fails on old code), `tests/improve.test.js` 17/17 (old AI: 2 fail), `tools/pwa-check.mjs` 18/18 |
-| Traders & Builders | parked (see Rejected / parked) |
+| Wave 3 (2026-10-28): Traders & Builders (24 own-art tiles, goods wine/grain/cloth, builder double turn, pig), off by default; house rule "Hand of tiles" (Off/2/3, not with the River); rules sheet gets T&B, House rules and 5 Learn videos (oEmbed-checked, new tab); computers play all of it; Settings fit at 320 px (was 33 px too wide); 3-4 players at 320 px show colour + score (name was one clipped letter); `fx.ui` taken-square flake fixed (tap zooms first on a tiny map) | done, `tests/tb.test.js` 55/55, `tests/tb.ui.mjs` 38/38 (old code: 5 fail + crash), all other suites green |
 
 ## Authorized next steps
 - (none beyond fixing bugs Tim or QA finds)
@@ -106,6 +106,8 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 - Visibility test: `node tests/vis.ui.mjs [--shots dir]` (`ENGINE=chromium` for Chrome). Audit script (not in repo): scratchpad `vis/carcassonne/shots.mjs <siteRoot> <outDir>`.
 - Kit copies (`js/coach.js`, `css/coach.css`, `js/profile.js`, `css/profile.css`, `js/pwa.js`, `sw.js`, `tools/make-icons.mjs`, `tools/pwa-check.mjs`, `js/fx.js`) are byte-identical to `../_coach`, `../_profile`, `../_pwa`, `../_fx`: never edit here, recopy. Bump `pwa.js?v=N data-version="N"` with any deploy-worthy change; leave the `online.js?v=` stamp alone. The coach checks `until` from a rAF loop that headless WebKit barely runs, so `renderDock` calls `tour.update()` during the guided game.
 - Saved games keep `acts` (every move) for Undo/Replay; games saved before 2026-10-27 have none, so they get neither (and are not counted in My stats unless finished after a move).
+- T&B engine (2026-10-28): `st.fig[p]={b,g}`, `st.goods[p]=[w,g,c]`, `st.bonus` (builder's 2nd tile), figure on a tile = `tile.x=[p,fi,'b'|'g']`, group `fk`/`gd`. Action `{type:'place',x,y,r,fi,big,fig,t}`: `fig` puts a builder/pig on `fi` instead of a meeple. Hand rule: `st.hands[p]`, `st.cur = hands[turn][0]`, `E.pick(st,t)`, `t` on the action; `AI.rankAll` ranks every held tile. `tools/ladder.js` takes `OPTS='{"tb":true,"hand":2}'`.
+- `tests/fx.ui.mjs` taken-square tap: on a map with tiles under 40 px the first tap zooms in (by design), so the test taps again, then Fit.
 - Screenshots of mid-game states: build a saved state with the engine + AI in node and load it through a throwaway page that sets `localStorage['carcassonne:v1']` (too big for `--local` on Windows).
 
 ## Decisions
@@ -122,8 +124,12 @@ Built and live. Base game + River + Inns & Cathedrals, vs 1–5 computers, onlin
 
 - Improvement pass looks (plainest, Tim can redirect): Owners = a 5th wooden token with a flag; Undo = first dock button (4 buttons share the row); Settings Play card gets a row My stats / Daily game / Rules / Guided game; Daily = you vs Hard, standard rules; ratings Easy 1000 / Medium 1400 / Hard 1625 (from the sims, Medium–Easy gap capped at 400); Undo or Hint or hint numbers or study mode = "with help" (unrated).
 
+- Wave 3 looks and wording (plainest, Tim can redirect): T&B switch under Rules; "House rules" sub-heading with "Hand of tiles" Off/2/3 and a one-line note; builder/pig are own-art figures (tall piece, pig) beside the meeples, spots are dashed circles; held tiles are small tiles beside your tile; goods icons barrel/sheaf/cloth bolt; "Place + builder"/"Place + pig"; rules sheet "Learn more: videos" with 5 links; strength note gets one T&B/hand line.
+- Hand of tiles and the River are exclusive (choosing one turns the other off). Only 1 house rule added besides the existing Farmers off (more would be guesses).
+
 ## Measured strength (2026-10-27, `node tools/sim.js 400`, after every level got farmers)
 Hard vs Med 78.5%, Hard vs Easy 96.5%, Med vs Easy 95.5%, Hard vs 3 Med 63% (fair 25%), Med vs 3 Easy 63%; first seat in Hard vs Hard wins 56.9%. Farmers per 100 moves Easy/Med/Hard 6.6/5.6/7.3 (was 0/0/9.5). Same move twice from one spot: 13/16/20 of 40 (was 14/20/25). `node tools/ladder.js 200` runs the whole ladder.
+2026-10-28 ladder: T&B (200/pair) Hard–Med 72.8%, Med–Easy 93.0%, Hard–Easy 98.5%, Hard vs 3 Med 64.5%; Hand 2: 82.8 / 94.0 / 98.5%, Hard vs 3 Med 59%; T&B + Hand 3 (100/pair): 69.0 / 91.5 / 93.0%, Hard vs 3 Med 38%.
 
 ## NOT verified
 - Edge pass: online fixes (room start with a pending computer move, room closed message) tested with a stand-in room, not live Firebase; two tabs tested in one WebKit context, not two iPhone Safari tabs.
@@ -135,8 +141,8 @@ Hard vs Med 78.5%, Hard vs Easy 96.5%, Med vs Easy 95.5%, Hard vs 3 Med 63% (fai
 
 - Visibility pass: tap-to-zoom with a real finger on an iPhone (synthetic touch events in WebKit + Chrome only). Still small by nature: on a phone a late map's whole-map view has 16-20 px tiles and 7-8 px hint numbers (the tap zoom is the answer); meeple circles on the hand tile ~20-30 px; laptop side panel bag scrolls (last row below the fold at 1280x800).
 - Improvement pass: install to the iPhone home screen and offline play on a real phone (pwa-check in WebKit only); Daily seed shared across devices (same kit function as other games, not compared on two devices); the Owners farm tint on very crowded late maps (checked on a 30-tile 3-player map). `fx.ui` "tap on a taken square: error sound" and `zoom.ui` flake about 1 run in 3 under load, on old code too.
+- Wave 3: T&B and hand of tiles in online rooms (options passed to the room; engine adapter tested, no two-browser run); the new tile art and figures on a real iPhone; `pwa-check` "nothing left localhost" failed once in 4 runs (passed 3 after; old code 1/1 pass).
 - Real-table look: the deal/flip and tile flights on a real iPhone (WebKit emulation only); frame rate on a real phone with a late 4-player game (headless WebKit: idle 42-44 fps, same as before); online opponent tile flights (same code path as computers, no two-browser run).
 
 ## Rejected / parked
-- ~~Traders & Builders~~ parked: needs goods tokens, the builder double turn and the pig; base + River + I&C first.
 - ~~River 2~~ parked: less common than the first River.

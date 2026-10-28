@@ -114,7 +114,48 @@
   ];
   IC.forEach((d) => { d.set = 'ic'; });
 
-  const ALL = BASE.concat(RIVER, IC);
+  // Traders & Builders: 24 tiles, 20 trade-good symbols on cities (9 wine, 6 grain, 5 cloth).
+  // Layout and counts from the JCloisterZone file (traders_and_builders.xml, set
+  // traders-and-builders:1); JCZ's "XL"/"XR" = our port X0/X2, "I" = an inner field with
+  // no edge. good: 'w' wine, 'g' grain, 'c' cloth. gs = where the goods symbol is drawn.
+  // shape = a narrower city band [fill, wall] where the usual one would cover a road or field.
+  // Three tiles ("!") have a hedge splitting a corner field. See docs/rules-check.md.
+  const BAND = ['M0 0 Q50 50 100 0 V100 Q50 50 0 100 Z', 'M100 0 Q50 50 0 0 M0 100 Q50 50 100 100'];
+  const BAND_HI = ['M0 0 Q50 44 100 0 V100 Q50 30 0 100 Z', 'M100 0 Q50 44 0 0 M0 100 Q50 30 100 100'];
+  const CAP_S = ['M0 100 H100 Q50 70 0 100 Z', 'M100 100 Q50 70 0 100'];
+  const TB = [
+    { id: 'Ta', count: 1, f: [C('N W', [26, 26], { good: 'g', gs: [12, 40] }), F('E S', [72, 72], [0])] },
+    { id: 'Tb', count: 1, f: [C('N W', [26, 26], { good: 'w', gs: [12, 40] }), F('E S', [72, 72], [0])] },
+    { id: 'Tc', count: 1, f: [C('W E', [50, 38], { good: 'c', gs: [74, 44], shape: BAND_HI }), C('S', [50, 93], { shape: CAP_S }), F('N', [50, 9], [0]), F('', [50, 77], [0, 1])] },
+    { id: 'Td', count: 1, f: [C('W E', [50, 38], { good: 'w', gs: [74, 44], shape: BAND_HI }), C('S', [50, 93], { shape: CAP_S }), F('N', [50, 9], [0]), F('', [50, 77], [0, 1])] },
+    { id: 'Te', count: 1, f: [C('N E W', [50, 32], { good: 'g', gs: [76, 50] }), F('S', [50, 90], [0])] },
+    { id: 'Tf', count: 1, f: [C('N W', [24, 24], { good: 'c', gs: [10, 40] }), C('S', [50, 89]), C('E', [89, 50]), F('', [62, 62], [0, 1, 2])] },
+    { id: 'Tg', count: 1, hedge: 'M100 100 L62 62', f: [C('N W', [22, 22], { good: 'c', gs: [36, 12] }), R('S1', [50, 80], { end: [44, 44] }), R('E1', [80, 50], { end: [44, 44] }),
+      F('S2', [20, 82], [0]), F('S0', [66, 90], [0]), F('E2', [90, 66], [0]), F('E0', [82, 22], [0])] },
+    { id: 'Th', count: 1, f: [C('N W', [22, 22], { good: 'w', gs: [36, 12] }), R('S1', [50, 80], { end: [44, 44] }), R('E1', [80, 50], { end: [44, 44] }),
+      F('S2', [20, 82], [0]), F('S0 E2', [78, 78], [0]), F('E0', [82, 22], [0])] },
+    { id: 'Ti', count: 1, f: [C('N W', [24, 24], { good: 'c', gs: [10, 40] }), C('S', [50, 89]), R('E1', [80, 49], { end: [44, 44] }), F('E0', [82, 24], [0]), F('E2', [74, 66], [0, 1])] },
+    { id: 'Tj', count: 1, f: [C('N W', [24, 24], { good: 'g', gs: [10, 40] }), C('S', [50, 89]), R('E1', [80, 49], { end: [44, 44] }), F('E0', [82, 24], [0]), F('E2', [74, 66], [0, 1])] },
+    { id: 'Tk', count: 1, f: [C('N W', [24, 24], { good: 'c', gs: [10, 40] }), R('E1', [80, 49], { end: [44, 44] }), F('E0', [82, 24], [0]), F('E2 S', [62, 78], [0])] },
+    { id: 'Tl', count: 1, hedge: 'M100 100 L64 62', f: [C('N W', [24, 24], { good: 'w', gs: [10, 40] }), R('E1', [80, 49], { end: [44, 44] }), F('E0', [82, 24], [0]), F('E2', [90, 64], [0]), F('S', [46, 80], [0])] },
+    { id: 'Tm', count: 1, f: [C('N E W', [50, 32], { good: 'w', gs: [76, 50] }), R('S1', [50, 90]), F('S0', [80, 92], [0]), F('S2', [20, 92], [0])] },
+    { id: 'Tn', count: 1, f: [C('N W', [22, 22], { good: 'w', gs: [36, 10] }), C('E S', [78, 78]), F('', [50, 50], [0, 1])] },
+    { id: 'To', count: 1, f: [C('E W', [50, 50], { good: 'w', gs: [74, 50] }), F('N', [50, 9], [0]), F('S', [50, 91], [0])] },
+    { id: 'Tp', count: 1, f: [C('N', [36, 12]), R('E1', [82, 50], { end: [60, 22] }), F('E0', [86, 26], [0]), F('W S E2', [36, 66], [0])] },
+    { id: 'Tq', count: 1, f: [C('W E', [30, 50], { good: 'g', gs: [74, 50], shape: BAND }), R('S1', [50, 88], { end: [50, 74] }), F('N', [50, 10], [0]), F('S2', [20, 90], [0]), F('S0', [80, 90], [0])] },
+    { id: 'Tr', count: 1, f: [C('W E', [30, 50], { good: 'w', gs: [74, 50], shape: BAND }), R('S1', [50, 88], { end: [50, 74] }), F('N', [50, 10], [0]), F('S2', [20, 90], [0]), F('S0', [80, 90], [0])] },
+    { id: 'Ts', count: 1, f: [C('E W', [28, 50], { good: 'w', gs: [74, 50], shape: BAND }), R('N1', [50, 12], { end: [50, 26] }), R('S1', [50, 88], { end: [50, 74] }),
+      F('N0', [20, 10], [0]), F('N2', [80, 10], [0]), F('S2', [20, 90], [0]), F('S0', [80, 90], [0])] },
+    { id: 'Tt', count: 1, f: [M([50, 44]), R('E1', [86, 50], { end: [66, 50] }), R('S1', [50, 88], { end: [50, 66] }), R('W1', [14, 50], { end: [34, 50] }),
+      F('W2 N E0', [50, 12]), F('E2 S0', [82, 82]), F('W0 S2', [18, 82])] },
+    { id: 'Tu', count: 1, f: [C('N W', [22, 22], { good: 'g', gs: [36, 10] }), R('S1', [50, 82], { end: [44, 44] }), F('S2', [20, 80], [0]), F('S0 E', [76, 66], [0])] },
+    { id: 'Tv', count: 1, hedge: 'M100 100 L64 64', f: [C('N W', [22, 22], { good: 'g', gs: [36, 10] }), R('S1', [50, 82], { end: [44, 44] }), F('S2', [20, 80], [0]), F('S0', [68, 90], [0]), F('E', [86, 58], [0])] },
+    { id: 'Tw', count: 1, f: [C('N', [26, 12]), R('W1', [18, 50], { end: [46, 50] }), R('S1', [50, 82], { end: [50, 22] }), F('W2', [16, 30], [0]), F('W0 S2', [22, 80]), F('E S0', [78, 60], [0])] },
+    { id: 'Tx', count: 1, bridge: 1, f: [R('N1 S1', [50, 24]), R('W1 E1', [24, 50]), F('W2 N0', [18, 18]), F('N2 E0', [82, 18]), F('E2 S0', [82, 82]), F('S2 W0', [18, 82])] },
+  ];
+  TB.forEach((d) => { d.set = 'tb'; });
+
+  const ALL = BASE.concat(RIVER, IC, TB);
   const START_ID = 'D';
 
   function rotPt([x, y], r) { for (let i = 0; i < r; i++) [x, y] = [100 - y, x]; return [x, y]; }
@@ -124,6 +165,7 @@
     const feats = def.f.map((f) => ({
       type: f.type, ports: ports(f.p), spot: f.spot, adj: f.adj || [], shield: f.shield || 0,
       inn: f.inn || null, cathedral: f.cathedral || 0, end: f.end || null,
+      good: f.good || null, gs: f.gs || null, shape: f.shape || null,
     }));
     const rot = [];
     for (let r = 0; r < 4; r++) {
@@ -133,14 +175,14 @@
         ps.forEach((p) => { if (portFeat[p] !== -1) throw new Error(def.id + ' port used twice'); portFeat[p] = fi; });
         const sides = f.type === 'city' ? [...new Set(ps.map((p) => Math.floor(p / 3)))]
           : f.type === 'road' || f.type === 'river' ? ps.filter((p) => p % 3 === 1).map((p) => (p - 1) / 3) : [];
-        return { type: f.type, ports: ps, sides, shield: f.shield, adj: f.adj, spot: rotPt(f.spot, r), inn: !!f.inn, cathedral: f.cathedral };
+        return { type: f.type, ports: ps, sides, shield: f.shield, adj: f.adj, spot: rotPt(f.spot, r), inn: !!f.inn, cathedral: f.cathedral, good: f.good };
       });
       if (portFeat.includes(-1)) throw new Error(def.id + ' has an uncovered port');
       const side = [0, 1, 2, 3].map((s) => ({ city: 'C', road: 'R', river: 'I' }[rf[portFeat[3 * s + 1]].type] || 'F'));
       rot.push({ portFeat, side, feats: rf, sig: side.join('') });
     }
     const river = feats.some((f) => f.type === 'river');
-    return { idx, id: def.id, set: def.set, count: def.count, feats, rot, river, spring: !!def.spring, lake: !!def.lake, village: !!def.village, hedge: def.hedge || null };
+    return { idx, id: def.id, set: def.set, count: def.count, feats, rot, river, spring: !!def.spring, lake: !!def.lake, village: !!def.village, hedge: def.hedge || null, bridge: !!def.bridge };
   });
 
   const START = TYPES.findIndex((t) => t.id === START_ID);
@@ -157,6 +199,7 @@
     return TYPES.map((t) => {
       if (t.set === 'base') return t.count - (t.idx === START && !o.river ? 1 : 0);
       if (t.set === 'ic') return o.ic ? t.count : 0;
+      if (t.set === 'tb') return o.tb ? t.count : 0;
       return 0;
     });
   }

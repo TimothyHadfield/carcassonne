@@ -15,7 +15,7 @@
   const DEFAULTS = {
     tab: 'play',
     // hints: the expected points on every lit square (off by default: a cleaner table, and games count as rated)
-    set: { seats: ['you', 'hard'], hints: false, hv: 1, owners: false, study: false, farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false },
+    set: { seats: ['you', 'hard'], hints: false, hv: 1, owners: false, study: false, farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false, tb: false, hand: 1 },
     table: { names: ['You', 'Player 2'], me: 0, drawn: [], need: [null, null, null, null], scores: [0, 0], log: [], kind: 'cityDone' },
     game: null,
   };
@@ -197,7 +197,7 @@
     const name = S.set.oname || 'Player';
     const seats = S.set.seats.map((k, i) => (k === 'you' ? 'human' : { kind: 'computer', name: LEVEL_NAME[k] }));
     const levels = S.set.seats.map((k) => (k === 'you' ? 'hard' : k));
-    const r = await n.createRoom({ name, seats, options: { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: S.set.river, ic: S.set.ic, levels } });
+    const r = await n.createRoom({ name, seats, options: { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: S.set.river, ic: S.set.ic, tb: !!S.set.tb, hand: S.set.river ? 1 : +S.set.hand || 1, levels } });
     netBusy = false;
     if (!r.ok) netErr = r.message;
     renderSettings();
@@ -220,6 +220,8 @@
     farm: 'Current rules: each farm scores 3 for every finished city it touches. First edition: each finished city pays 4 to whoever has the most farmers in all the farms touching it.',
     river: 'The River expansion: the game starts from the spring and the 12 river tiles are laid first, one per turn, ending with the lake. A river may not turn the same way twice in a row (no U-turns). Meeples can go on the land beside the river, never on the water.',
     ic: 'Inns & Cathedrals: 18 more tiles. A road with an inn scores 2 per tile when finished but nothing if unfinished at the end; a city with a cathedral scores 3 per tile and shield, or nothing if unfinished. Each player also gets one big meeple that counts as two (tap a circle twice to use it). Up to 6 players.',
+    tb: 'Traders & Builders: 24 more tiles. 20 city spots show wine, grain or cloth: whoever lays the tile that finishes a city takes its goods, even with no meeple there; at the end the most of each kind scores 10 (ties: all 10). Each player also gets a builder and a pig. The builder goes on a road or city where you already have a meeple; whenever you later extend that road or city, you lay a second tile straight away (once a turn). It comes home when the feature is finished. The pig goes on a field where you have a farmer: if you win that farm, it scores 4 per city instead of 3. Builder and pig circles show on your tile where they can go.',
+    hand: 'House rule: everyone holds 2 or 3 tiles instead of drawing one. On your turn pick one of yours (tap it), lay it, and draw one back. Tiles that fit nowhere are swapped for new ones. The game ends when every tile is laid. Not with the River (the river is one stack).',
     small: 'Current rules: a finished 2-tile city is worth 4 like any other city (2 per tile). Before 2004 (first editions) it was only worth 2 (1 per tile, plus 1 per shield).',
     strength: 'Measured by letting the computers play thousands of full games against each other with the same tile bags and seats swapped. The table shows how often the row player wins.',
     online: 'Create a room and friends type its 5-letter code on their own phone to join. Every "You" seat above becomes a seat for a person; computer seats stay computers. Your phone runs the game and the computers, so keep this page open until the game ends. Free: no account needed.',
@@ -252,7 +254,7 @@
     if (S.game && S.game.review) endReview();
     recordQuit(S.game);   // leaving a game after your first tile counts as a loss
     gen++;
-    let seats = S.set.seats.slice(), o = { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: !!S.set.river, ic: !!S.set.ic, seed: (Math.random() * 2 ** 31) >>> 0 };
+    let seats = S.set.seats.slice(), o = { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: !!S.set.river, ic: !!S.set.ic, tb: !!S.set.tb, hand: S.set.river ? 1 : +S.set.hand || 1, seed: (Math.random() * 2 ** 31) >>> 0 };
     let day = null;
     if (kind === 'daily' && PF()) {
       day = Profile.daily.date();
@@ -287,7 +289,7 @@
     return ranked;
   }
   function valueOf(m) {
-    const r = getRanked().find((q) => q.x === m.x && q.y === m.y && q.r === m.r && q.fi === m.fi && !!q.big === !!m.big);
+    const r = getRanked().find((q) => q.x === m.x && q.y === m.y && q.r === m.r && q.fi === m.fi && !!q.big === !!m.big && (q.fig || null) === (m.fig || null));
     return r ? r.v : 0;
   }
 
@@ -337,7 +339,12 @@
     const src = human ? null : handSource(g.st);   // a computer's tile flies from the middle to its square
     g.st = E.apply(g.st, a);
     // every move, so Undo and the end-of-game replay can rebuild any point of the game from the bag's seed
-    if (g.acts) g.acts.push({ x: a.x, y: a.y, r: a.r, fi: a.fi == null ? -1 : a.fi, big: !!a.big });
+    if (g.acts) {
+      const rec = { x: a.x, y: a.y, r: a.r, fi: a.fi == null ? -1 : a.fi, big: !!a.big, p };
+      if (a.fig) rec.fig = a.fig;
+      if (prev.hands) rec.t = a.t != null ? a.t : prev.cur;
+      g.acts.push(rec);
+    }
     if (human) {
       g.moved = true;
       if (S.set.hints || S.set.study) g.helped = true;   // the numbers on the squares (or study mode) are help
@@ -375,7 +382,8 @@
   // the move index of this phone's player's last tile (-1 = none yet)
   function lastMine(g) {
     const me = g.seats.indexOf('you');
-    for (let i = g.acts.length - 1; i >= 0; i--) if (i % g.seats.length === me) return i;
+    // (who moved: kept with each move since the builder's extra turns; older games went in seat order)
+    for (let i = g.acts.length - 1; i >= 0; i--) if ((g.acts[i].p != null ? g.acts[i].p : i % g.seats.length) === me) return i;
     return -1;
   }
   // Undo: one person against computers, not in the Daily or the guided game.
@@ -387,7 +395,8 @@
     if (!canUndo()) return;
     const g = S.game, k = lastMine(g), me = g.seats.indexOf('you');
     const r = replayTo(g, k);
-    const mineBefore = Math.ceil(Math.max(0, k - me) / g.seats.length);
+    let mineBefore = 0;
+    for (let i = 0; i < k; i++) if ((g.acts[i].p != null ? g.acts[i].p : i % g.seats.length) === me) mineBefore++;
     g.st = r.st; g.race = r.race; g.log = r.log; g.acts = g.acts.slice(0, k); g.lost = g.lost.slice(0, mineBefore);
     g.helped = true; g.aside = null; g.loggedFinal = false; g.shown = null; g.cheered = false;
     gen++; leader = true;
@@ -635,6 +644,10 @@
         const f = T.TYPES[tl.t].rot[tl.r].feats[tl.m[1]];
         men += `<g class="${cls}"><g transform="translate(${x * 100} ${y * 100})">${RD.meeple(tl.m[0], f.spot[0], f.spot[1], f.type === 'field', tl.m[2] ? ms * 1.375 : ms)}</g></g>`;
       }
+      if (tl.x) {   // Traders & Builders: builder or pig
+        const f = T.TYPES[tl.t].rot[tl.r].feats[tl.x[1]];
+        men += `<g class="${cls}"><g transform="translate(${x * 100} ${y * 100})">${RD.figure(tl.x[2], tl.x[0], f.spot[0], f.spot[1], ms * 1.1)}</g></g>`;
+      }
       s += `<g class="${cls}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100)}</g>`;
       if (isLast) s += `<rect class="last" x="${x * 100 + 2}" y="${y * 100 + 2}" width="96" height="96" rx="3" stroke="${RD.PLAYER[st.last.p]}"/>`;
     }
@@ -662,7 +675,7 @@
       }
       if (sel) {
         const f = sel.fi >= 0 ? T.TYPES[st.cur].rot[sel.r].feats[sel.fi] : null;
-        const extra = f ? RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? ms * 1.375 : ms) : '';
+        const extra = !f ? '' : sel.fig ? RD.figure(sel.fig, st.turn, f.spot[0], f.spot[1], ms * 1.1) : RD.meeple(st.turn, f.spot[0], f.spot[1], f.type === 'field', sel.big ? ms * 1.375 : ms);
         const turn = spinFrom('ghost', sel.x + ',' + sel.y, sel.r);
         // held just above its square: a bigger, softer shadow than the laid tiles
         s += `<rect x="${sel.x * 100 + 7}" y="${sel.y * 100 + 12}" width="100" height="100" rx="3" fill="#000" opacity=".3"/>`;
@@ -730,7 +743,8 @@
   // set down in front of a player, not lined up like a star rating.
   function supply(p, size) {
     const st = S.game.st, n = st.meeples[p], big = st.opts.ic ? st.big[p] : 0;
-    if (!n && !big) return '<span class="none">0</span>';
+    const figs = st.fig ? (st.fig[p].b ? RD.figureSVG('b', p, Math.round(size * 1.35)) : '') + (st.fig[p].g ? RD.figureSVG('g', p, Math.round(size * 1.35)) : '') : '';
+    if (!n && !big) return figs ? `<span class="figs">${figs}</span>` : '<span class="none">0</span>';
     const back = Math.ceil(n / 2), step = size * (size <= 10 ? 0.75 : 0.9), drop = size * 0.42, B = big ? Math.round(size * 1.4) : 0;
     const lead = B ? B * 0.8 : 0;
     const one = (sz, i, x, y, z) => {
@@ -746,7 +760,7 @@
     const h = Math.max(n > 1 ? drop + size : size, B);
     if (B) out += one(B, 9, 0, h - B, 3);
     const w = lead + Math.max(back * step, (n - back) * step + step / 2) + (size - step);
-    return `<span class="crowd" style="width:${Math.ceil(w)}px;height:${Math.ceil(h)}px">${out}</span>`;
+    return `<span class="crowd" style="width:${Math.ceil(w)}px;height:${Math.ceil(h)}px">${out}</span>` + (figs ? `<span class="figs">${figs}</span>` : '');
   }
   function renderPlayers() {
     const g = S.game, st = g.st, me = meSeat(), wide = window.innerWidth >= 900;
@@ -892,9 +906,35 @@
           `<circle class="halo" cx="${x}" cy="${y}" r="${on ? 14 : 8}"/><circle class="ring" cx="${x}" cy="${y}" r="${on ? 14 : 8}"/></g>`;
       }
     }
+    if (sel && isHumanTurn() && st.fig) {
+      // Traders & Builders: builder / pig circles (dashed) where you already hold the feature
+      const fs = E.figSpots(st, sel.x, sel.y, sel.r);
+      const R = T.TYPES[st.cur].rot[sel.r];
+      for (const kind of ['b', 'g']) for (const fi of fs[kind]) {
+        const [x, y] = R.feats[fi].spot, on = sel.fi === fi && sel.fig === kind;
+        extra += `<g class="spot fig ${on ? 'on' : ''}" data-fi="${fi}" data-fig="${kind}" aria-label="${kind === 'b' ? 'Builder' : 'Pig'}"><circle cx="${x}" cy="${y}" r="15" fill="transparent"/>` +
+          (on ? RD.figure(kind, st.turn, x, y, 30) : '') +
+          `<circle class="halo" cx="${x}" cy="${y}" r="${on ? 14 : 8}"/><circle class="ring" cx="${x}" cy="${y}" r="${on ? 14 : 8}"/></g>`;
+      }
+    }
     el.innerHTML = RD.tileSVG(st.cur, r, extra);
+    renderHeld();
     const turn = spinFrom('hand', st.moves + ':' + st.cur, r);
     if (turn) { const svg = el.firstChild; svg.style.setProperty('--from', turn + 'deg'); svg.classList.add('spin'); }
+  }
+
+  // Hand of tiles (house rule): your other held tiles beside the one in play; tap one to play it instead.
+  function renderHeld() {
+    const g = S.game, st = g.st, el = $('held');
+    if (!el) return;
+    const me = meSeat(), who = isHumanTurn() ? st.turn : me;
+    const h = st.hands && who >= 0 && st.hands[who] && !st.over ? st.hands[who] : null;
+    el.hidden = !h;
+    $('hand').parentNode.classList.toggle('with-held', !!h);
+    if (!h) { el.innerHTML = ''; return; }
+    const rest = who === st.turn ? h.filter((t, i) => i !== h.indexOf(st.cur)) : h;
+    const can = who === st.turn && isHumanTurn();
+    el.innerHTML = rest.map((t) => `<button class="held-t" data-held="${t}" ${can ? '' : 'disabled'} aria-label="Play this tile instead">${RD.tileSVG(t, 0)}</button>`).join('');
   }
 
   // Turning a tile animates the quarter turn instead of jumping: returns the
@@ -927,10 +967,13 @@
   }
   function describe(e) {
     const who = e.who.map((p) => seatName(p)).join(' + ');
-    const what = { city: 'city', road: 'road', cloister: 'monastery', farm: 'farm' }[e.kind];
+    const what = { city: 'city', road: 'road', cloister: 'monastery', farm: 'farm', goods: 'most goods' }[e.kind];
     return `${who}: ${what} +${e.pts}${e.end ? ' (end)' : ''}`;
   }
 
+  function goodsText(gd) {
+    return gd.map((v, k) => (v ? `${v} ${RD.GOOD_NAME['wgc'[k]]}` : '')).filter(Boolean).join(', ');
+  }
   function renderDock() {
     const g = S.game, st = g.st;
     if (tour && tutOn()) setTimeout(() => tour && tour.update(), 0);   // the guided game moves on at once, not on the coach's next check
@@ -954,7 +997,7 @@
     $('btn-rotate').disabled = !human;
     $('btn-hint').disabled = !human;
     $('btn-place').disabled = !(human && sel);
-    $('btn-place').textContent = sel && sel.fi >= 0 ? (sel.big ? 'Place + big meeple' : 'Place + meeple') : 'Place';
+    $('btn-place').textContent = sel && sel.fi >= 0 ? (sel.fig ? (sel.fig === 'b' ? 'Place + builder' : 'Place + pig') : sel.big ? 'Place + big meeple' : 'Place + meeple') : 'Place';
     if (st.over) {
       const top = Math.max(...st.scores);
       const w = st.scores.map((v, i) => (v === top ? seatName(i) : null)).filter(Boolean);
@@ -962,8 +1005,9 @@
       sub.innerHTML = `<button class="btn small" id="btn-results">Results</button> <button class="btn small primary" id="btn-new2">New game</button>`;
       return;
     }
-    const lastEv = st.last && st.last.ev.length ? st.last.ev.map(describe).join(' · ') : '';
-    const extra = [noticeText(g), asideText(g)].filter(Boolean).join(' ');
+    let lastEv = st.last && st.last.ev.length ? st.last.ev.map(describe).join(' · ') : '';
+    if (st.last && st.last.goods) lastEv = [lastEv, `${seatName(st.last.p)} took ${goodsText(st.last.goods)}`].filter(Boolean).join(' · ');
+    const extra = [noticeText(g), asideText(g), st.bonus && st.last && st.last.bonus ? `Builder: ${seatName(st.turn) === 'You' ? 'you lay' : seatName(st.turn) + ' lays'} a second tile.` : ''].filter(Boolean).join(' ');
     if (!human) {
       status.textContent = g.online && g.seats[st.turn] === 'you' ? 'Sending…' : `${seatName(st.turn)} is placing…`;
       sub.textContent = [extra, lastEv].filter(Boolean).join(' · ');
@@ -984,8 +1028,9 @@
     } else {
       // no circles on the tile: say why instead of asking for one
       const any = E.hasMeeple(st, st.turn, false) || E.hasMeeple(st, st.turn, true);
-      status.textContent = sel.fi >= 0 ? 'Meeple set. Place it?'
-        : E.meepleSpots(st, sel.x, sel.y, sel.r).length ? 'Tap a circle for a meeple'
+      const fs = st.fig ? E.figSpots(st, sel.x, sel.y, sel.r) : { b: [], g: [] };
+      status.textContent = sel.fi >= 0 ? (sel.fig ? (sel.fig === 'b' ? 'Builder' : 'Pig') + ' set. Place it?' : 'Meeple set. Place it?')
+        : E.meepleSpots(st, sel.x, sel.y, sel.r).length || fs.b.length || fs.g.length ? 'Tap a circle for a meeple'
         : any ? 'No meeple spot here. Place it?' : 'No meeples left. Place it?';
       if (S.set.hints) {
         const v = valueOf(sel);
@@ -1002,7 +1047,7 @@
       const tot = g.lost.reduce((a, b) => a + b, 0);
       h += `<div><h3>Points given up <button class="q" data-help="study">?</button></h3><div style="font-size:22px;font-weight:800">${tot.toFixed(1)} <span class="muted">over ${g.lost.length} moves</span></div></div>`;
     }
-    const inGame = T.TYPES.filter((t) => t.set === 'base' || (t.set === 'ic' && st.opts.ic) || (t.set === 'river' && st.opts.river && !t.spring));
+    const inGame = T.TYPES.filter((t) => t.set === 'base' || (t.set === 'ic' && st.opts.ic) || (t.set === 'tb' && st.opts.tb) || (t.set === 'river' && st.opts.river && !t.spring));
     h += `<div><h3>Still in the bag</h3><div class="bag">${inGame.map((t) =>
       `<div class="${left[t.idx] ? '' : 'z'}">${RD.tileSVG(t.idx, 0)}<span>${left[t.idx]}</span></div>`).join('')}</div></div>`;
     const recent = g.log.slice(-12).reverse();
@@ -1048,7 +1093,7 @@
     const st = g.st;
     const order = st.scores.map((v, i) => i).sort((a, b) => st.scores[b] - st.scores[a]);
     const rows = order.map((i) => `<tr><td><svg viewBox="0 0 20 20" style="width:16px;height:16px;vertical-align:-3px"><use href="#meeple" fill="${RD.PLAYER[i]}"/></svg> ${esc(seatName(i))}</td>
-      <td>${st.bd[i].city}</td><td>${st.bd[i].road}</td><td>${st.bd[i].cloister}</td><td data-farm="${i}">${st.bd[i].farm}</td><td class="tot" data-tot="${i}">${st.scores[i]}</td></tr>`).join('');
+      <td>${st.bd[i].city}</td><td>${st.bd[i].road}</td><td>${st.bd[i].cloister}</td><td data-farm="${i}">${st.bd[i].farm}</td>${st.goods ? `<td>${st.bd[i].goods || 0}</td>` : ''}<td class="tot" data-tot="${i}">${st.scores[i]}</td></tr>`).join('');
     // Score race chart
     const W = 440, H = 130, n = g.race.length - 1 || 1, max = Math.max(10, ...g.race.flat());
     const lines = `<line x1="5" x2="${W - 5}" y1="${H - 6}" y2="${H - 6}" stroke="#2a3042"/>` + g.seats.map((_, p) => {
@@ -1060,7 +1105,10 @@
     openSheet(`<div class="final">
       <h2>${esc($('status').textContent)}</h2>
       <p class="muted">Farms and unfinished features were scored at the end.</p>
-      <table><colgroup><col style="width:28%"><col style="width:13%"><col style="width:13%"><col style="width:20%"><col style="width:13%"><col style="width:13%"></colgroup><tr><th></th><th>City</th><th>Road</th><th>Monastery</th><th>Farm</th><th>Total</th></tr>${rows}</table>
+      ${st.goods
+        ? `<table><colgroup><col style="width:26%"><col style="width:12%"><col style="width:12%"><col style="width:14%"><col style="width:12%"><col style="width:12%"><col style="width:12%"></colgroup><tr><th></th><th>City</th><th>Road</th><th>Mon.</th><th>Farm</th><th>Goods</th><th>Total</th></tr>${rows}</table>
+          <p class="muted">Goods taken (wine, grain, cloth): ${order.map((i) => `${esc(seatName(i))} ${st.goods[i].join('/')}`).join(' · ')}</p>`
+        : `<table><colgroup><col style="width:28%"><col style="width:13%"><col style="width:13%"><col style="width:20%"><col style="width:13%"><col style="width:13%"></colgroup><tr><th></th><th>City</th><th>Road</th><th>Monastery</th><th>Farm</th><th>Total</th></tr>${rows}</table>`}
       <svg class="race" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="${(finalAt - 1) / n * (W - 10) + 5}" x2="${(finalAt - 1) / n * (W - 10) + 5}" y1="0" y2="${H}" stroke="#2a3042" stroke-dasharray="3 4"/>${lines}</svg>
       <p class="muted" style="margin-top:-4px">Score after each tile; the jump at the end is farms and unfinished features.</p>
       ${lost}
@@ -1324,9 +1372,13 @@
       <section class="card set-sec"><h3>Rules</h3>
         <div class="set-row"><span class="l">River <button class="q" data-help="river">?</button></span>${sw('river', s.river)}</div>
         <div class="set-row"><span class="l">Inns &amp; Cathedrals <button class="q" data-help="ic">?</button></span>${sw('ic', s.ic)}</div>
+        <div class="set-row"><span class="l">Traders &amp; Builders <button class="q" data-help="tb">?</button></span>${sw('tb', s.tb)}</div>
         <div class="set-row"><span class="l">Farmers</span>${sw('farmers', s.farmers)}</div>
         <div class="set-row"><span class="l">Farm scoring <button class="q" data-help="farm">?</button></span>${seg('farm', [['3rd', 'Current'], ['1st', '1st edition']], s.farm)}</div>
         <div class="set-row"><span class="l">2-tile city <button class="q" data-help="small">?</button></span>${seg('smallCity', [[4, '4 points'], [2, '2 points']], s.smallCity)}</div>
+        <h4 class="set-sub">House rules</h4>
+        <div class="set-row"><span class="l">Hand of tiles <button class="q" data-help="hand">?</button></span>${seg('hand', [[1, 'Off'], [2, '2'], [3, '3']], s.river ? 1 : s.hand || 1)}</div>
+        <p class="set-note">Farmers off is the usual beginners' house rule. A hand of tiles turns the River off.</p>
       </section>
       <section class="card set-sec"><h3>Sound &amp; effects</h3><div id="fx-box"></div></section>
       <section class="card set-sec"><h3>At the table</h3>
@@ -1369,7 +1421,8 @@
       <tr><td>Hard vs 3 Medium</td><td>63%</td><td>72 – 58</td></tr>
       <tr><td>Medium vs 3 Easy</td><td>63%</td><td>65 – 50</td></tr>
     </table>
-    <p class="muted" style="margin:8px 0 0">Going first: Hard vs Hard, the first player wins 56.9% (400 games). With 4 players a fair share is 25%.</p>`;
+    <p class="muted" style="margin:8px 0 0">Going first: Hard vs Hard, the first player wins 56.9% (400 games). With 4 players a fair share is 25%.</p>
+    <p class="muted" style="margin:6px 0 0">Traders &amp; Builders (200 games a pair): Hard beats Medium 73%, Medium beats Easy 93%. Hand of 2 tiles: 83% and 94%.</p>`;
 
   // ================================================================ sheet + help popup
   // The results sheet and the "?" bubble each get a history step, so Back closes them first
@@ -1431,9 +1484,25 @@
     if (d.tab) { setTab(d.tab); return; }
     if (d.close !== undefined) { closeSheet(); return; }
     // ---- play
+    if (b.closest('#hand') && d.fig) {
+      if (!sel) return;
+      const fi = +d.fi;
+      if (sel.fi === fi && sel.fig === d.fig) { sel.fi = -1; sel.fig = null; sfx('tap'); }
+      else { sel.fi = fi; sel.fig = d.fig; sel.big = false; sfx('meeple', { pitch: 0.7 }); }
+      renderBoard(); renderHand(); renderDock(); return;
+    }
+    if (d.held !== undefined) {
+      const g = S.game;
+      if (!isHumanTurn() || !g.st.hands) return;
+      E.pick(g.st, +d.held);
+      sel = null; showBest = null; ranked = null; rankedAt = -1; handR = 0; handKey = null;
+      sfx('tileDraw');
+      save(); renderPlay(); return;
+    }
     if (b.closest('#hand') && d.fi !== undefined) {
       if (!sel) return;
       const fi = +d.fi, st = S.game.st, p = st.turn;
+      sel.fig = null;
       const small = E.hasMeeple(st, p, false), large = E.hasMeeple(st, p, true);
       if (sel.fi !== fi) { sel.fi = fi; sel.big = !small; }
       else if (!sel.big && large) sel.big = true;
@@ -1451,12 +1520,18 @@
     if (b.id === 'zoom-own') { S.set.owners = !S.set.owners; save(); sfx('tap'); renderPlay(); return; }
     if (b.id === 'btn-stats' || b.id === 'btn-stats2') { openStats(); return; }
     if (b.id === 'btn-rules') { openRules(); return; }
-    if (b.id === 'btn-place') { if (sel && isHumanTurn()) submit({ type: 'place', x: sel.x, y: sel.y, r: sel.r, fi: sel.fi, big: sel.fi >= 0 && !!sel.big }); return; }
+    if (b.id === 'btn-place') {
+      if (!sel || !isHumanTurn()) return;
+      const a = { type: 'place', x: sel.x, y: sel.y, r: sel.r, fi: sel.fi, big: sel.fi >= 0 && !sel.fig && !!sel.big };
+      if (sel.fi >= 0 && sel.fig) a.fig = sel.fig;
+      if (S.game.st.hands) a.t = S.game.st.cur;
+      submit(a); return;
+    }
     if (b.id === 'btn-hint') {
       if (!isHumanTurn()) return;
       S.game.helped = true; save();   // a game with Hint counts as "with help"
       const best = getRanked()[0];
-      sel = { x: best.x, y: best.y, r: best.r, fi: best.fi, big: !!best.big };
+      sel = { x: best.x, y: best.y, r: best.r, fi: best.fi, big: !!best.big, fig: best.fig || null };
       showBest = { x: best.x, y: best.y };
       focusOn(best.x * 100 + 50, best.y * 100 + 50);
       sfx('cardSlide', { pitch: 0.6, vol: 0.6 });
@@ -1528,6 +1603,7 @@
       } else if (sg.startsWith('seat')) S.set.seats[+sg.slice(4)] = v;
       else if (sg === 'farm') S.set.farm = v;
       else if (sg === 'smallCity') S.set.smallCity = +v;
+      else if (sg === 'hand') { S.set.hand = +v; if (+v > 1) S.set.river = false; }
       else if (sg === 'tplayers') {
         const n = +v, nm = S.table.names;
         while (nm.length < n) nm.push('Player ' + (nm.length + 1));
@@ -1539,6 +1615,7 @@
     if (d.sw) {
       S.set[d.sw] = !S.set[d.sw];
       if (d.sw === 'ic' && !S.set.ic && S.set.seats.length > 5) S.set.seats.length = 5;   // 6 players needs the 6th colour from I&C
+      if (d.sw === 'river' && S.set.river) S.set.hand = 1;   // the river is one stack: no hands
       save(); renderSettings();
       if (S.game && (d.sw === 'hints' || d.sw === 'study')) rankedAt = -1;
       return;

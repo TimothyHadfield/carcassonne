@@ -1,20 +1,22 @@
 // The level ladder in one run: head-to-head win rates (seats swapped), the
 // fair share against three of the level below, how often each level puts a
 // farmer down, and how often Hard repeats itself from the same position.
-// Usage: node tools/ladder.js [games]   (AI=<path> tests another ai.js)
+// Usage: node tools/ladder.js [games]   (AI=<path> tests another ai.js;
+// OPTS='{"tb":true}' plays with those rules, e.g. Traders & Builders or {"hand":2})
 const path = require('path');
 const E = require('../js/engine.js');
 const AI = require(process.env.AI ? path.resolve(process.env.AI) : '../js/ai.js');
 const T = require('../js/tiles.js');
+const OPTS = process.env.OPTS ? JSON.parse(process.env.OPTS) : {};
 
 const farmers = {}, placed = {};
 function game(levels, seed) {
-  const st = E.newGame({ players: levels.length, seed });
+  const st = E.newGame(Object.assign({}, OPTS, { players: levels.length, seed }));
   const rand = E.rng(seed * 7919 + 1);
   while (!st.over) {
     const lv = levels[st.turn], a = AI.choose(st, lv, rand);
     placed[lv] = (placed[lv] || 0) + 1;
-    if (a.fi >= 0 && T.TYPES[st.cur].rot[a.r].feats[a.fi].type === 'field') farmers[lv] = (farmers[lv] || 0) + 1;
+    if (a.fi >= 0 && !a.fig && T.TYPES[a.t != null ? a.t : st.cur].rot[a.r].feats[a.fi].type === 'field') farmers[lv] = (farmers[lv] || 0) + 1;
     E.applyMut(st, a);
   }
   return st.scores;
@@ -42,7 +44,7 @@ function four(who, rest, games) {
 function repeats(level) {
   let same = 0, n = 0;
   for (let i = 0; i < 40; i++) {
-    const st = E.newGame({ players: 2, seed: 777 + i });
+    const st = E.newGame(Object.assign({}, OPTS, { players: 2, seed: 777 + i }));
     const r0 = E.rng(i);
     for (let k = 0; k < 10 + (i % 20); k++) E.applyMut(st, AI.choose(st, 'medium', r0));
     if (st.over) continue;
