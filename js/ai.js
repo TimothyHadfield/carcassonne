@@ -22,8 +22,10 @@
 
   // Easy plays the Medium move this often and a random spot otherwise.
   const EASY_SKILL = 0.6;
+  // How far below the best move (in expected points) a level still sometimes plays.
+  const NEAR = { medium: 0.6, hard: 0.35 };
   const LEVELS = {
-    medium: { opp: 0, farms: false, cityPer: 0.5, roadPer: 0.5, meeple: 1.5, flat: true },
+    medium: { opp: 0, farms: true, cityPer: 0.5, roadPer: 0.5, meeple: 1.5, flat: true },
     hard: { opp: 1, farms: true, cityPer: 0.58, roadPer: 0.72, meeple: 1, flat: false },
   };
 
@@ -162,15 +164,22 @@
     if (level === 'easy' || level === 'random') {
       const L = E.legalPlacements(st);
       const m = L[Math.floor(rand() * L.length)];
-      const spots = E.meepleSpotsFor(st, m.x, m.y, st.cur, m.r, p)
-        .filter((fi) => TYPES[st.cur].rot[m.r].feats[fi].type !== 'field');
-      const fi = spots.length && rand() < 0.5 ? spots[Math.floor(rand() * spots.length)] : -1;
+      // A beginner claims something half the time, now and then a farm.
+      const spots = E.meepleSpotsFor(st, m.x, m.y, st.cur, m.r, p);
+      const farms = spots.filter((fi) => TYPES[st.cur].rot[m.r].feats[fi].type === 'field');
+      const rest = spots.filter((fi) => !farms.includes(fi));
+      const pool = rest.length && (!farms.length || rand() < 0.8) ? rest : farms;
+      const fi = pool.length && rand() < 0.5 ? pool[Math.floor(rand() * pool.length)] : -1;
       return { type: 'place', x: m.x, y: m.y, r: m.r, fi, big: fi >= 0 && !E.hasMeeple(st, p, false) };
     }
     const ranked = rankMoves(st, p, level);
-    // Break exact ties at random so games differ.
-    const top = ranked.filter((m) => m.v >= ranked[0].v - 1e-9);
-    const m = top[Math.floor(rand() * top.length)];
+    // Not predictable: any move within NEAR points of the best may be played,
+    // the closer the likelier (exact ties are an even pick).
+    const near = NEAR[level] || 1e-9;
+    const top = ranked.filter((m) => m.v >= ranked[0].v - near);
+    const w = top.map((m) => Math.exp((m.v - ranked[0].v) / (near / 2)));
+    let x = rand() * w.reduce((a, b) => a + b, 0), m = top[top.length - 1];
+    for (let i = 0; i < top.length; i++) { x -= w[i]; if (x <= 0) { m = top[i]; break; } }
     return { type: 'place', x: m.x, y: m.y, r: m.r, fi: m.fi, big: !!m.big };
   }
 
