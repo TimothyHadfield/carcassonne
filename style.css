@@ -435,3 +435,39 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
   .sheet-back { align-items: center; }
   .sheet { max-width: 480px; border-radius: 16px; }
 }
+
+/* ================================================================ improvement pass (2026-10-27) */
+/* Owners token: a fourth wooden token with a little flag; lit (blue ring) while the view is on */
+.board-tools #zoom-own svg { width: 20px; height: 20px; display: block; margin: auto; color: #4a2f12; }
+.board-tools #zoom-own.lit { box-shadow: 0 0 0 2.5px var(--accent), inset 0 1px 1px rgba(255,244,214,.6), inset 0 -2px 3px rgba(70,42,14,.45), 0 3px 0 #5e3f1d, 0 5px 8px rgba(0,0,0,.45); }
+/* Undo sits before Rotate; four buttons share the row */
+.dock-btns #btn-undo { min-width: 56px; }
+/* four buttons (Undo on): they share the row instead of pushing Place off the screen */
+.dock-btns:has(#btn-undo:not([hidden])) .btn { flex: 1 1 auto; min-width: 0; padding-left: 6px; padding-right: 6px; }
+.dock-btns:has(#btn-undo:not([hidden])) #btn-place { flex-grow: 1.4; }
+@media (max-width: 359px) { .dock-btns .btn { min-width: 0; padding: 4px 7px; } .dock-btns #btn-undo { min-width: 0; } }
+/* replay controls take the buttons' place (same height, nothing moves) */
+.dock-btns.review .btn { flex: 1; min-width: 0; }
+.dock-btns.review #rv-done { flex: 1.2; }
+/* Settings: My stats, Daily game, Rules, Guided game */
+.set-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 9px 0 3px; }
+.set-btns .btn { display: inline-flex; align-items: center; gap: 6px; }
+.set-btns .pf-open svg { flex: none; }
+/* results sheet: how this game counted */
+.stats-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 13px; }
+.stats-line .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+/* coach: the first-visit offer sits above the phone's tab bar; the rules tabs wrap instead of scrolling sideways */
+:root { --coach-offer-bottom: calc(66px + env(safe-area-inset-bottom)); }
+@media (min-width: 900px) { :root { --coach-offer-bottom: 18px; } }
+.coach-rules .coach-rules-nav { flex-wrap: wrap; overflow-x: visible; row-gap: 6px; }
+.coach-rules td:first-child { white-space: nowrap; }
+
+/* Key moments. A meeple put down hops onto its tile; a finished city, road or monastery lights
+   up in its owner's colour. Invisible unless animated, so Animations off shows nothing extra. */
+.board .placed .mbody { animation: hop .5s cubic-bezier(.3,.7,.3,1) .12s both; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes hop { 0% { transform: translateY(-60%) scale(1.15); opacity: 0; } 45% { transform: translateY(0) scale(1.08, .88); opacity: 1; } 70% { transform: translateY(-14%); } 100% { transform: none; } }
+.board .done-flash { fill: none; stroke-width: 9; opacity: 0; animation: doneflash 1.5s ease-out .25s both; }
+@keyframes doneflash { 0% { opacity: 0; } 18% { opacity: .95; } 60% { opacity: .7; } 100% { opacity: 0; } }
+.fx-fast .board .placed .mbody { animation-duration: .28s; animation-delay: .05s; }
+.fx-fast .board .done-flash { animation-duration: .8s; animation-delay: .1s; }
+@media (prefers-reduced-motion: reduce) { .board .placed .mbody, .board .done-flash { animation: none; } }

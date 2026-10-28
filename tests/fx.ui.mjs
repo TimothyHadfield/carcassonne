@@ -49,7 +49,7 @@ function lastTileState() {
   }
   throw new Error('no last-tile state found');
 }
-const saved = (st, extra) => JSON.stringify({ tab: 'play', set: { seats: ['you', 'hard'], hints: true }, game: Object.assign({ st, seats: ['you', 'hard'], lost: [], race: [st.scores.slice()], log: [] }, extra || {}) });
+const saved = (st, extra) => JSON.stringify({ tab: 'play', set: { seats: ['you', 'hard'], hints: true, hv: 1 }, game: Object.assign({ st, seats: ['you', 'hard'], lost: [], race: [st.scores.slice()], log: [] }, extra || {}) });
 
 // ---- static server for the site
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
@@ -239,7 +239,7 @@ try {
     ok(rows.join() === 'sound,volume,moves,alerts,ui,celebrations,animations,animSpeed', 'Settings has every Sound & effects row: ' + rows);
     // the switch looks like the others: off -> on toggles the green knob
     const look = await page.evaluate(() => {
-      const sw = document.querySelector('#fx-box [data-row="animations"] .switch'), ref = document.querySelector('.switch[data-sw="hints"]');
+      const sw = document.querySelector('#fx-box [data-row="animations"] .switch'), ref = document.querySelector('.switch[data-sw="farmers"]');   // on by default (hints are off by default since 2026-10-27)
       const a = sw.getBoundingClientRect(), b = ref.getBoundingClientRect();
       return { w: a.width, h: a.height, rw: b.width, rh: b.height, bg: getComputedStyle(sw).backgroundColor, rbg: getComputedStyle(ref).backgroundColor };
     });

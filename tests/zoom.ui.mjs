@@ -27,7 +27,7 @@ function longGame() {
   while (!st.over && (Object.keys(st.board).length < 64 || st.turn !== 0)) E.applyMut(st, AI.choose(st, 'medium', rand));
   return st;
 }
-const saved = (st) => JSON.stringify({ tab: 'play', set: { seats: ['you', 'hard'], hints: true }, game: { st, seats: ['you', 'hard'], lost: [], race: [st.scores.slice()], log: [] } });
+const saved = (st) => JSON.stringify({ tab: 'play', set: { seats: ['you', 'hard'], hints: true, hv: 1 }, game: { st, seats: ['you', 'hard'], lost: [], race: [st.scores.slice()], log: [] } });
 
 // ---- static server for this folder
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };

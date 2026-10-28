@@ -30,7 +30,7 @@ function play(n, seed, until, o) {
   while (!st.over && !until(st)) E.applyMut(st, AI.choose(st, 'medium', rand));
   return st;
 }
-const saved = (st, seats, extra) => JSON.stringify(Object.assign({ tab: 'play', set: { seats, hints: true }, game: { st, seats, lost: [], race: [st.scores.slice()], log: [] } }, extra || {}));
+const saved = (st, seats, extra) => JSON.stringify(Object.assign({ tab: 'play', set: { seats, hints: true, hv: 1 }, game: { st, seats, lost: [], race: [st.scores.slice()], log: [] } }, extra || {}));
 const S2 = ['you', 'hard'];
 const mid = play(2, 21, (s) => s.moves >= 16 && s.turn === 0);
 const endSoon = play(2, 777, (s) => s.bag.length === 0 && s.turn === 0);
@@ -302,7 +302,7 @@ const tests = {
     six.scores = [188, 104, 99, 150, 7, 120];
     const sizes = [['320', { width: 320, height: 568 }, true], ['393', PHONE, true], ['land', { width: 659, height: 393 }, true], ['laptop', { width: 1280, height: 800 }, false], ['huge', { width: 1920, height: 1080 }, false], ['zoom200', { width: 640, height: 400 }, false]];
     for (const [nm, viewport, mobile] of sizes) for (const [what, st, seats] of [['mid', mid, S2], ['six', six, ['you', 'hard', 'medium', 'easy', 'hard', 'medium']]]) {
-      const { ctx, page, errors } = await open({ state: saved(E.clone(st), seats, { set: { seats, hints: true, ic: what === 'six' } }), viewport, mobile });
+      const { ctx, page, errors } = await open({ state: saved(E.clone(st), seats, { set: { seats, hints: true, hv: 1, ic: what === 'six' } }), viewport, mobile });
       const o = await overflow(page);
       ok(o.x <= 0 && o.y <= 0, `${nm} ${what}: no page overflow ${JSON.stringify(o)}`);
       const m = await page.evaluate(() => {

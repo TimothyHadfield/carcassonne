@@ -29,7 +29,7 @@ function play(players, opts, until) {
   return { st, race };
 }
 const n = (st) => Object.keys(st.board).length;
-const saved = ({ st, race }, seats, ic) => JSON.stringify({ tab: 'play', set: { seats, hints: true, ic }, game: { st, seats, lost: [], race, log: [] } });
+const saved = ({ st, race }, seats, ic) => JSON.stringify({ tab: 'play', set: { seats, hints: true, hv: 1, ic }, game: { st, seats, lost: [], race, log: [] } });
 const S6 = ['you', 'hard', 'hard', 'hard', 'hard', 'hard'], S4 = ['you', 'hard', 'hard', 'hard'];
 const LATE = play(6, { ic: true }, (st) => n(st) >= 78 && st.turn === 0);
 const MID = play(4, {}, (st) => n(st) >= 30 && st.turn === 0);

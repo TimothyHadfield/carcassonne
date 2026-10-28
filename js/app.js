@@ -14,21 +14,27 @@
   // ---------------------------------------------------------------- state
   const DEFAULTS = {
     tab: 'play',
-    set: { seats: ['you', 'hard'], hints: true, study: false, farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false },
+    // hints: the expected points on every lit square (off by default: a cleaner table, and games count as rated)
+    set: { seats: ['you', 'hard'], hints: false, hv: 1, owners: false, study: false, farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false },
     table: { names: ['You', 'Player 2'], me: 0, drawn: [], need: [null, null, null, null], scores: [0, 0], log: [], kind: 'cityDone' },
     game: null,
   };
+  let firstVisit = false;   // nothing saved yet: offer the guided first game
   let S = load();
   function load() {
     let s = null;
     try { s = JSON.parse(localStorage.getItem(KEY)); } catch (e) { s = null; }
     const d = JSON.parse(JSON.stringify(DEFAULTS));
-    if (!s || typeof s !== 'object') return d;
-    return { tab: s.tab || d.tab, set: Object.assign(d.set, s.set), table: Object.assign(d.table, s.table), game: s.game || null };
+    if (!s || typeof s !== 'object') { firstVisit = true; return d; }
+    const set = Object.assign(d.set, s.set);
+    // Hint numbers used to be on by default: switch the old default off once (they now make a game "with help").
+    if (set.hv !== 1) { set.hints = false; set.hv = 1; }
+    return { tab: s.tab || d.tab, set, table: Object.assign(d.table, s.table), game: s.game || null };
   }
   function save() {
     // An online game lives in the room, not here: keep the local game saved instead.
-    const out = S.game && S.game.online ? Object.assign({}, S, { game: localBackup }) : S;
+    const out = S.game && S.game.online ? Object.assign({}, S, { game: localBackup })
+      : S.game && S.game.review ? Object.assign({}, S, { game: S.game.real }) : S;
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch (e) { /* private mode: still works, just not saved */ }
   }
 
@@ -239,12 +245,27 @@
     // Computers go by level; the meeple colour tells two of the same apart.
     return g.seats.filter((q) => q === k).length > 1 ? LEVEL_NAME[k] + ' ' + RD.PLAYER_NAME[i].toLowerCase() : LEVEL_NAME[k];
   }
-  function newGame() {
+  // kind: undefined (Settings' seats and rules), 'daily' (today's game vs Hard, standard rules, same bag
+  // for everyone) or 'tut' (the guided first game vs Easy, a fixed bag).
+  function newGame(kind) {
     if (S.game && S.game.online) leaveOnline();
+    if (S.game && S.game.review) endReview();
+    recordQuit(S.game);   // leaving a game after your first tile counts as a loss
     gen++;
-    const seats = S.set.seats.slice();
-    const st = E.newGame({ players: seats.length, farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: !!S.set.river, ic: !!S.set.ic, seed: (Math.random() * 2 ** 31) >>> 0 });
-    S.game = { st, seats, lost: [], race: [st.scores.slice()], log: [] };
+    let seats = S.set.seats.slice(), o = { farmers: S.set.farmers, farm: S.set.farm, smallCity: S.set.smallCity, river: !!S.set.river, ic: !!S.set.ic, seed: (Math.random() * 2 ** 31) >>> 0 };
+    let day = null;
+    if (kind === 'daily' && PF()) {
+      day = Profile.daily.date();
+      seats = ['you', 'hard'];
+      o = { farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false, seed: (Profile.daily.seed(day, 'carcassonne') >>> 0) || 1 };
+    } else if (kind === 'tut' && self.CarcTutorial) {
+      seats = ['you', 'easy'];
+      o = { farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false, seed: CarcTutorial.SEED };
+    }
+    const st = E.newGame(Object.assign({ players: seats.length }, o));
+    S.game = { st, seats, lost: [], race: [st.scores.slice()], log: [], acts: [], gid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), helped: false, moved: false, recorded: false };
+    if (day) S.game.daily = day;
+    if (kind === 'tut') S.game.tut = true;
     sel = null; handR = 0; ranked = null; rankedAt = -1; study = null; showBest = null; vs.user = false;
     save();
     closeSheet();
@@ -255,6 +276,7 @@
   function isHumanTurn() {
     const g = S.game;
     if (!g || g.st.over) return false;
+    if (g.review) return false;
     if (g.online) return !!(netSnap && netSnap.myTurn && sentAt !== g.st.moves);
     return g.seats[g.st.turn] === 'you';
   }
@@ -272,7 +294,9 @@
   function tick() {
     const g = S.game;
     if (!g) return;
+    if (g.review) { renderPlay(); return; }
     if (g.st.over) {
+      recordEnd(g);
       renderPlay();
       // Only counts as shown once the Play tab is open, so ending on another tab still shows it later.
       if (g.shown !== g.st.moves && S.tab === 'play') { g.shown = g.st.moves; setTimeout(showFinal, 700); }
@@ -312,6 +336,12 @@
     const p = g.st.turn, prev = g.st;
     const src = human ? null : handSource(g.st);   // a computer's tile flies from the middle to its square
     g.st = E.apply(g.st, a);
+    // every move, so Undo and the end-of-game replay can rebuild any point of the game from the bag's seed
+    if (g.acts) g.acts.push({ x: a.x, y: a.y, r: a.r, fi: a.fi == null ? -1 : a.fi, big: !!a.big });
+    if (human) {
+      g.moved = true;
+      if (S.set.hints || S.set.study) g.helped = true;   // the numbers on the squares (or study mode) are help
+    }
     noteAside(prev, g);
     leader = true;   // this tab moved: it runs the computers now (see the storage listener)
     if (src) incomingAt = g.st.moves;
@@ -326,6 +356,157 @@
     floatEvents(g.st.last.ev);
     tick();
     if (S.game === g) moveFx(prev, g);
+  }
+
+  // ---------------------------------------------------------------- Undo + replay (local games)
+  // Every move is kept (g.acts), and the bag comes from the game's seed, so any point of the game can be
+  // rebuilt exactly. Old saved games without the list get neither.
+  function replayTo(g, k) {
+    const st = E.newGame(g.st.opts), race = [st.scores.slice()], log = [];
+    for (let i = 0; i < k; i++) {
+      const p = st.turn;
+      E.applyMut(st, g.acts[i]);
+      race.push(st.scores.slice());
+      for (const e of st.last.ev) log.push({ ...e, by: p });
+    }
+    return { st, race, log };
+  }
+  const hasActs = (g) => !!(g && !g.online && Array.isArray(g.acts) && g.acts.length === g.st.moves);
+  // the move index of this phone's player's last tile (-1 = none yet)
+  function lastMine(g) {
+    const me = g.seats.indexOf('you');
+    for (let i = g.acts.length - 1; i >= 0; i--) if (i % g.seats.length === me) return i;
+    return -1;
+  }
+  // Undo: one person against computers, not in the Daily or the guided game.
+  function canUndo() {
+    const g = S.game;
+    return !!(hasActs(g) && !g.review && !g.daily && !g.tut && !g.st.over && g.seats.filter((k) => k === 'you').length === 1 && lastMine(g) >= 0);
+  }
+  function undo() {
+    if (!canUndo()) return;
+    const g = S.game, k = lastMine(g), me = g.seats.indexOf('you');
+    const r = replayTo(g, k);
+    const mineBefore = Math.ceil(Math.max(0, k - me) / g.seats.length);
+    g.st = r.st; g.race = r.race; g.log = r.log; g.acts = g.acts.slice(0, k); g.lost = g.lost.slice(0, mineBefore);
+    g.helped = true; g.aside = null; g.loggedFinal = false; g.shown = null; g.cheered = false;
+    gen++; leader = true;
+    sel = null; handR = 0; ranked = null; rankedAt = -1; study = null; showBest = null; incomingAt = -1; handKey = null; vs.user = false;
+    notice = { g, at: g.st.moves, text: 'Took back your last tile: this game now counts as "with help".' };
+    sfx('tileTurn');
+    save(); renderPlay(true); tick();
+  }
+  // End-of-game replay: step through the game tile by tile on the board. The finished game waits in .real.
+  let rpTimer = 0;
+  function startReview() {
+    const g = S.game;
+    if (!hasActs(g) || !g.st.over || g.review) return;
+    closeSheet();
+    const st = replayTo(g, 0).st;
+    S.game = { review: true, real: g, k: 0, st, seats: g.seats, lost: g.lost, race: g.race, log: g.log, acts: g.acts };
+    gen++; sel = null; showBest = null; incomingAt = -1; handKey = null;
+    renderPlay(true);
+  }
+  function reviewTo(k, playing) {
+    const R = S.game;
+    if (!R || !R.review) return;
+    const n = R.real.acts.length;
+    k = Math.max(0, Math.min(n, k));
+    if (k === R.k) { if (!playing) stopPlay(); return; }
+    const fwd = k === R.k + 1;
+    R.k = k; R.st = k === n ? R.real.st : replayTo(R.real, k).st;
+    if (!playing) stopPlay();
+    animatedAt = fwd ? -1 : R.st.moves;   // a step forward drops the new tile in
+    renderPlay();
+    if (fwd && R.st.last) { floatEvents(R.st.last.ev); sfx('place', { vol: 0.6 }); }
+    if (k === n && R.st.final) floatEvents(R.st.final.filter((e) => e.kind === 'farm').slice(0, 12), 0.1);
+  }
+  function stopPlay() { if (rpTimer) { clearInterval(rpTimer); rpTimer = 0; } const b = $('rv-play'); if (b) b.textContent = 'Play'; }
+  function togglePlay() {
+    const R = S.game;
+    if (!R || !R.review) return;
+    if (rpTimer) { stopPlay(); return; }
+    if (R.k >= R.real.acts.length) reviewTo(0);
+    $('rv-play').textContent = 'Pause';
+    rpTimer = setInterval(() => {
+      const Q = S.game;
+      if (!Q || !Q.review || Q.k >= Q.real.acts.length) { stopPlay(); return; }
+      reviewTo(Q.k + 1, true);
+    }, 700 * speed());
+  }
+  function endReview(quiet) {
+    stopPlay();
+    if (!S.game || !S.game.review) return;
+    S.game = S.game.real;
+    gen++; animatedAt = S.game.st.moves;
+    if (!quiet) renderPlay(true);
+  }
+
+  // ---------------------------------------------------------------- My stats (js/profile.js + js/carcprofile.js)
+  // One result per game. Leaving a game after your first tile counts as a loss; Hint, the hint numbers,
+  // study mode or Undo make it "with help" (not rated); the guided first game never counts.
+  let pfReady = false;
+  const PF = () => (pfReady && self.Profile ? self.Profile : null);
+  function recordFrom(g, online) {
+    const P = PF();
+    if (!P || !g || g.recorded || g.tut || g.review) return null;
+    const me = online ? (netSnap ? netSnap.mySeat : -1) : g.seats.indexOf('you');
+    if (me < 0) return null;   // computers only: nobody here to count
+    g.recorded = true;
+    let out = null;
+    try {
+      const r = CarcProfile.result(g, me, { helped: !!g.helped, daily: !!g.daily, online });
+      if (g.daily) r.date = g.daily;   // a Daily finished after midnight still belongs to the day it was dealt
+      out = P.recordResult(r);
+    } catch (e) { /* the stats never stop the game */ }
+    save();
+    return out;
+  }
+  function recordEnd(g) {
+    if (!g || !g.st.over || g.recorded || g.review) return;
+    if (g.online) {
+      // once per room (a reload shows the same finished room again)
+      if (!netSnap || netSnap.mySeat < 0) return;
+      const key = (netSnap.code || '') + ':' + g.st.moves;
+      if (S.set.recOnline === key) { g.recorded = true; return; }
+      S.set.recOnline = key;
+      recordFrom(g, true);
+      return;
+    }
+    if (hasActs(g) || g.daily || g.moved) recordFrom(g, false);
+  }
+  function recordQuit(g) {
+    if (!g || g.online || g.review || g.st.over || !g.moved || g.tut || g.recorded) return;
+    if (g.seats.filter((k) => k === 'you').length !== 1) return;   // pass and play: no loser
+    recordFrom(g, false);
+  }
+  const dailyDone = () => { try { return !!(PF() && Profile.daily.played()); } catch (e) { return false; } };
+  function openStats(tab) {
+    const P = PF();
+    if (!P) return;
+    closeSheet(); hidePop();
+    P.openPanel(tab ? { tab } : undefined);
+  }
+  // a line on the results sheet: how this game counted
+  function statsLine(g) {
+    if (!PF() || !g || g.online && !(netSnap && netSnap.mySeat >= 0)) return '';
+    const why = g.tut ? 'The guided game is not counted in My stats.' : g.online ? 'Counted in My stats (online).'
+      : g.seats.filter((k) => k === 'you').length > 1 ? 'Counted as pass the phone.'
+      : g.helped ? 'Counted as "with help" (Hint, hint numbers, study or Undo): not rated.' : g.daily ? 'Today\'s Daily game is in My stats.' : 'Counted in My stats.';
+    return `<div class="stats-line"><span class="muted">${esc(why)}</span><button class="btn small pf-open" id="btn-stats2">My stats</button></div>`;
+  }
+
+  // ---------------------------------------------------------------- the guided first game + rules (js/coach.js + js/tutorial.js)
+  let tour = null;
+  const tutOn = () => !!(S.game && S.game.tut && !S.game.online && !S.game.review);
+  function openRules() { if (self.COACH && self.CarcTutorial) { closeSheet(); hidePop(); COACH.rules(CarcTutorial.rules()); } }
+  function startTutorial() {
+    if (!tour) return;
+    if (COACH.closeOffer) COACH.closeOffer();
+    tour.reset();
+    if (S.tab !== 'play') setTab('play');
+    newGame('tut');
+    tour.start();
   }
 
   // ---------------------------------------------------------------- board view
@@ -457,6 +638,9 @@
       s += `<g class="${cls}">${RD.tile(tl.t, tl.r, x * 100, y * 100, 100)}</g>`;
       if (isLast) s += `<rect class="last" x="${x * 100 + 2}" y="${y * 100 + 2}" width="96" height="96" rx="3" stroke="${RD.PLAYER[st.last.p]}"/>`;
     }
+    if (S.set.owners) s += ownersLayer(st, under);
+    // a finished city, road or monastery lights up in its owner's colour, once (the move that finished it)
+    if (st.last && animatedAt !== st.moves && incomingAt !== st.moves) s += flashes(st);
     s += men;
     if (isHumanTurn()) {
       const R = getRanked();
@@ -492,6 +676,46 @@
     svg.innerHTML = `<g id="world"${from && from !== 'none' ? ` style="transform:${from}"` : ''}>${s}</g>`;
     animatedAt = st.moves;
     applyView();
+  }
+
+  // The finished features of the last move, outlined tile by tile in the scorer's colour (CSS fades them in and out).
+  function flashes(st) {
+    let s = '';
+    for (const e of (st.last && st.last.ev) || []) {
+      if (e.kind === 'farm') continue;
+      const col = RD.PLAYER[e.who[0]] === '#2a2d36' ? '#e8eaf0' : RD.PLAYER[e.who[0]];
+      for (const k of e.where) { const [x, y] = k.split(',').map(Number); s += `<rect class="done-flash" x="${x * 100 + 4}" y="${y * 100 + 4}" width="92" height="92" rx="4" stroke="${col}"/>`; }
+    }
+    return s;
+  }
+  // The Owners view: the map dimmed, every claimed city, road, monastery and field tinted in the colour of
+  // whoever holds it (a tie: stripes of both). Unclaimed land stays dim.
+  function ownersLayer(st, under) {
+    let defs = '', body = '';
+    const masks = new Set(), pats = new Set();
+    const paint = (w) => {
+      if (w.length === 1) return RD.PLAYER[w[0]];
+      const id = 'own-p' + w.join('');
+      if (!pats.has(id)) {
+        pats.add(id);
+        const k = 14 / w.length;
+        defs += `<pattern id="${id}" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">${w.map((p, i) => `<rect x="${i * k}" width="${k}" height="14" fill="${RD.PLAYER[p]}"/>`).join('')}</pattern>`;
+      }
+      return `url(#${id})`;
+    };
+    for (const key in st.board) {
+      const tl = st.board[key], [x, y] = key.split(',').map(Number), R = T.TYPES[tl.t].rot[tl.r];
+      let one = '';
+      R.feats.forEach((f, fi) => {
+        if (f.type === 'river') return;
+        const w = E.winners(st.groups[E.find(st, tl.g[fi])].m);
+        if (!w.length) return;
+        if (f.type === 'field' && !masks.has(tl.t)) { masks.add(tl.t); defs += RD.ownMask(tl.t); }
+        one += RD.ownShape(tl.t, tl.r, fi, paint(w));
+      });
+      if (one) body += `<g transform="translate(${x * 100} ${y * 100})">${one}</g>`;
+    }
+    return `<g class="owners" pointer-events="none"><defs>${defs}</defs><path d="${under}" fill="#0f1117" opacity=".42"/>${body}</g>`;
   }
 
   // The one seat at this device (single player or online); -1 when several people share the phone.
@@ -634,6 +858,8 @@
       if (my !== gen) return;
       // (the tile and, in its own layer, its meeple)
       for (const g of document.querySelectorAll('#world .incoming')) { g.classList.remove('incoming'); g.classList.add('placed'); }
+      const w = $('world'), fl = flashes(st);
+      if (w && fl && S.game && S.game.st === st) w.insertAdjacentHTML('beforeend', fl);
     });
   }
   // Before a move by someone not at this device: where their tile is now (the hand).
@@ -707,10 +933,24 @@
 
   function renderDock() {
     const g = S.game, st = g.st;
+    if (tour && tutOn()) setTimeout(() => tour && tour.update(), 0);   // the guided game moves on at once, not on the coach's next check
     // (tiles left: the badge on the face-down stack)
     $('left').textContent = g.online && netSnap && netSnap.code ? `Room ${netSnap.code}` : '';
     const status = $('status'), sub = $('substatus');
     const human = isHumanTurn();
+    $('play-btns').hidden = !!g.review;
+    $('review-btns').hidden = !g.review;
+    if (g.review) {
+      const n = g.real.acts.length, L = st.last;
+      status.textContent = g.k ? `Replay: tile ${g.k} of ${n}` : `Replay: the start (${n} tiles)`;
+      const what = L && g.k ? (L.ev.length ? L.ev.map(describe).join(' · ') : `${seatName(L.p)} laid a tile${L.fi >= 0 ? ' and a meeple' : ''}`) : 'Tap Play or ▶ to step through the game.';
+      sub.textContent = g.k === n && st.final ? 'End of game: farms and unfinished features scored.' : what;
+      $('rv-prev').disabled = g.k <= 0; $('rv-next').disabled = g.k >= n;
+      return;
+    }
+    const undoOk = canUndo();
+    $('btn-undo').hidden = !undoOk && !(hasActs(g) && !g.daily && !g.tut && !g.st.over && g.seats.filter((k) => k === 'you').length === 1);
+    $('btn-undo').disabled = !undoOk;
     $('btn-rotate').disabled = !human;
     $('btn-hint').disabled = !human;
     $('btn-place').disabled = !(human && sel);
@@ -773,6 +1013,8 @@
   function renderPlay(refit) {
     if (!S.game) { newGame(); return; }
     renderPlayers();
+    const own = $('zoom-own');
+    own.classList.toggle('lit', !!S.set.owners); own.setAttribute('aria-pressed', String(!!S.set.owners));
     if (refit || !vs.user) { vs.user = false; fit(); } else clampView();
     renderBoard();
     renderHand();
@@ -802,7 +1044,7 @@
 
   function showFinal() {
     const g = S.game;
-    if (!g || !g.st.over || S.tab !== 'play') return;
+    if (!g || g.review || !g.st.over || S.tab !== 'play') return;
     const st = g.st;
     const order = st.scores.map((v, i) => i).sort((a, b) => st.scores[b] - st.scores[a]);
     const rows = order.map((i) => `<tr><td><svg viewBox="0 0 20 20" style="width:16px;height:16px;vertical-align:-3px"><use href="#meeple" fill="${RD.PLAYER[i]}"/></svg> ${esc(seatName(i))}</td>
@@ -822,7 +1064,8 @@
       <svg class="race" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="${(finalAt - 1) / n * (W - 10) + 5}" x2="${(finalAt - 1) / n * (W - 10) + 5}" y1="0" y2="${H}" stroke="#2a3042" stroke-dasharray="3 4"/>${lines}</svg>
       <p class="muted" style="margin-top:-4px">Score after each tile; the jump at the end is farms and unfinished features.</p>
       ${lost}
-      <div class="acts"><button class="btn" data-close>Look at board</button><button class="btn primary" id="btn-new3">New game</button></div></div>`);
+      ${statsLine(g)}
+      <div class="acts"><button class="btn" data-close>Look at board</button>${hasActs(g) ? '<button class="btn" id="btn-replay">Replay</button>' : ''}<button class="btn primary" id="btn-new3">New game</button></div></div>`);
     if (!g.cheered) { g.cheered = true; save(); finalFx(g); }
   }
   // The first time the results show: farms and totals count up, then you win (or lose).
@@ -1075,6 +1318,7 @@
         <div class="set-row"><span class="l">Hints <button class="q" data-help="hints">?</button></span>${sw('hints', s.hints)}</div>
         <div class="set-row"><span class="l">Study mode <button class="q" data-help="study">?</button></span>${sw('study', s.study)}</div>
         <div class="set-row"><span class="muted">Seats and rules start with the next game.</span><button class="btn primary small" id="btn-new">New game</button></div>
+        <div class="set-btns">${PF() ? `<button class="btn small pf-open" id="btn-stats">${Profile.avatarSVG(Profile.avatar, 20)}My stats</button><button class="btn small" id="btn-daily">${dailyDone() ? 'Daily ✓' : 'Daily game'}</button>` : ''}${self.COACH && self.CarcTutorial ? '<button class="btn small" id="btn-rules">Rules</button><button class="btn small" id="btn-tut">Guided game</button>' : ''}</div>
       </section>
       ${renderOnline()}
       <section class="card set-sec"><h3>Rules</h3>
@@ -1116,16 +1360,16 @@
       ${err}</section>`;
   }
   // Filled from tools/sim.js output (see progress.md for the run).
-  // Run 2026-10-19: 1000 two-player games per pair, 500 four-player games.
+  // Run 2026-10-27 (after every level got farmers): 400 two-player games per pair, 200 four-player games.
   const STRENGTH = `<table class="str">
       <tr><th>Match</th><th>Wins</th><th>Avg points</th></tr>
-      <tr><td>Hard vs Medium</td><td>81%</td><td>112 – 93</td></tr>
-      <tr><td>Hard vs Easy</td><td>98%</td><td>113 – 69</td></tr>
-      <tr><td>Medium vs Easy</td><td>95%</td><td>101 – 72</td></tr>
-      <tr><td>Hard vs 3 Medium</td><td>84%</td><td>71 – 50</td></tr>
-      <tr><td>Medium vs 3 Easy</td><td>70%</td><td>55 – 41</td></tr>
+      <tr><td>Hard vs Medium</td><td>79%</td><td>113 – 96</td></tr>
+      <tr><td>Hard vs Easy</td><td>97%</td><td>111 – 68</td></tr>
+      <tr><td>Medium vs Easy</td><td>96%</td><td>114 – 80</td></tr>
+      <tr><td>Hard vs 3 Medium</td><td>63%</td><td>72 – 58</td></tr>
+      <tr><td>Medium vs 3 Easy</td><td>63%</td><td>65 – 50</td></tr>
     </table>
-    <p class="muted" style="margin:8px 0 0">Going first: Hard vs Hard, the first player wins 55.5% (1000 games). With 4 players a fair share is 25%.</p>`;
+    <p class="muted" style="margin:8px 0 0">Going first: Hard vs Hard, the first player wins 56.9% (400 games). With 4 players a fair share is 25%.</p>`;
 
   // ================================================================ sheet + help popup
   // The results sheet and the "?" bubble each get a history step, so Back closes them first
@@ -1160,6 +1404,7 @@
   function setTab(t, push) {
     if (popSkip && push !== false) { afterPop = t; return; }   // a closing bubble is still stepping back: go after it
     if (t === 'play' && S.tab !== 'play') vs.user = false;   // back on the board: auto fit
+    if (t !== 'play' && S.game && S.game.review) endReview(true);
     S.tab = t; save();
     document.querySelectorAll('#tabs button').forEach((b) => b.toggleAttribute('aria-current', b.dataset.tab === t));
     document.querySelectorAll('#tabs button').forEach((b) => { if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); });
@@ -1197,9 +1442,19 @@
       renderBoard(); renderHand(); renderDock(); return;
     }
     if (b.id === 'btn-rotate') { rotateSel(); return; }
+    if (b.id === 'btn-undo') { undo(); return; }
+    if (b.id === 'btn-replay') { startReview(); return; }
+    if (b.id === 'rv-prev') { reviewTo(S.game.k - 1); return; }
+    if (b.id === 'rv-next') { reviewTo(S.game.k + 1); return; }
+    if (b.id === 'rv-play') { togglePlay(); return; }
+    if (b.id === 'rv-done') { endReview(); return; }
+    if (b.id === 'zoom-own') { S.set.owners = !S.set.owners; save(); sfx('tap'); renderPlay(); return; }
+    if (b.id === 'btn-stats' || b.id === 'btn-stats2') { openStats(); return; }
+    if (b.id === 'btn-rules') { openRules(); return; }
     if (b.id === 'btn-place') { if (sel && isHumanTurn()) submit({ type: 'place', x: sel.x, y: sel.y, r: sel.r, fi: sel.fi, big: sel.fi >= 0 && !!sel.big }); return; }
     if (b.id === 'btn-hint') {
       if (!isHumanTurn()) return;
+      S.game.helped = true; save();   // a game with Hint counts as "with help"
       const best = getRanked()[0];
       sel = { x: best.x, y: best.y, r: best.r, fi: best.fi, big: !!best.big };
       showBest = { x: best.x, y: best.y };
@@ -1207,15 +1462,19 @@
       sfx('cardSlide', { pitch: 0.6, vol: 0.6 });
       renderBoard(); renderHand(); renderDock(); return;
     }
-    if (b.id === 'btn-new') {
+    if (b.id === 'btn-new' || b.id === 'btn-daily' || b.id === 'btn-tut') {
+      if (b.id === 'btn-daily' && dailyDone()) { openStats('daily'); return; }
       // a game under way (or an online room) isn't thrown away by one stray tap
-      const live = S.game && !S.game.st.over && (S.game.st.moves > 0 || S.game.online);
+      const real = S.game && S.game.review ? S.game.real : S.game;
+      const live = real && !real.st.over && (real.st.moves > 0 || real.online);
       if (live && !b.classList.contains('armed')) {
+        const was = b.innerHTML;
         b.classList.add('armed'); b.textContent = 'Start over?';
-        setTimeout(() => { if (b.isConnected) { b.classList.remove('armed'); b.textContent = 'New game'; } }, 4000);
+        setTimeout(() => { if (b.isConnected) { b.classList.remove('armed'); b.innerHTML = was; } }, 4000);
         return;
       }
-      setTab('play'); newGame(); return;
+      if (b.id === 'btn-tut') { startTutorial(); return; }
+      setTab('play'); newGame(b.id === 'btn-daily' ? 'daily' : undefined); return;
     }
     if (b.id === 'btn-new2' || b.id === 'btn-new3') { newGame(); return; }
     if (b.id === 'btn-results') { showFinal(); return; }
@@ -1312,6 +1571,13 @@
   });
   window.addEventListener('popstate', () => {
     if (popSkip) { popSkip = false; const t = afterPop; afterPop = null; if (t) setTab(t); return; }
+    // Back with the rules sheet or My stats open: close it and stay put
+    const kitOpen = (self.COACH && COACH.rulesOpen()) || (self.Profile && Profile.isOpen && Profile.isOpen());
+    if (kitOpen) {
+      try { if (COACH.rulesOpen()) COACH.closeRules(); if (Profile.isOpen()) Profile.closePanel(); } catch (err) { /* never stops the game */ }
+      history.pushState(null, '', '#' + S.tab);
+      return;
+    }
     const t = (location.hash || '#play').slice(1);
     // Back with the results sheet or a "?" bubble open: close it and stay put
     if (!$('sheet-back').hidden || !$('pop').hidden) { closeSheet(true); hidePop(true); return; }
@@ -1321,6 +1587,7 @@
   // neither wipes the other's moves. Only the tab that moved last (or was touched) runs the computers.
   window.addEventListener('storage', (e) => {
     if (e.key !== KEY || !e.newValue || (S.game && S.game.online)) return;
+    if (S.game && S.game.review) endReview(true);
     let n;
     try { n = JSON.parse(e.newValue); } catch (err) { return; }
     if (!n || typeof n !== 'object') return;
@@ -1340,11 +1607,49 @@
 
   // ---------------------------------------------------------------- boot
   $('defs-host').innerHTML = RD.DEFS;
+  // My stats, achievements and the Daily game (optional: the game runs without them)
+  if (self.Profile && self.CarcProfile) {
+    try {
+      Profile.init({
+        game: 'carcassonne', levels: CarcProfile.LEVELS, achievements: CarcProfile.achievements(),
+        modes: { help: { name: 'Computers, with help' }, friends: { name: 'Pass the phone' }, online: { name: 'Online' } },
+        daily: { title: 'Daily game', onPlay: () => { Profile.closePanel(); setTab('play'); newGame('daily'); } },
+        draws: true,
+        onChange: (what) => { if (S.tab === 'settings' && (what === 'me' || what === 'import' || what === 'result' || what === 'reset')) renderSettings(); },
+      });
+      pfReady = true;
+    } catch (e) { pfReady = false; }
+  }
+  // The guided first game: the coach follows the game's own state and steps aside on other tabs and under sheets.
+  if (self.COACH && self.CarcTutorial) {
+    tour = COACH.tour({
+      id: CarcTutorial.ID,
+      steps: CarcTutorial.steps({ game: () => (tutOn() ? S.game : null), sel: () => (tutOn() ? sel : null) }),
+      pauseIf: () => S.tab !== 'play' || !tutOn() || !$('sheet-back').hidden || (self.Profile && Profile.isOpen && Profile.isOpen()),
+    });
+  }
+  // A new version of the site reloads itself only at a quiet moment (js/pwa.js): no room, nothing open,
+  // not typing, no computer about to move, and the game over, not started, or out of sight on another tab.
+  if (self.PWA) PWA.safeToReload = () => {
+    if (inRoom() || (S.game && S.game.online) || !$('sheet-back').hidden || !$('pop').hidden) return false;
+    if (self.Profile && Profile.isOpen && Profile.isOpen()) return false;
+    if (self.COACH && (COACH.rulesOpen() || tutOn())) return false;
+    const a = document.activeElement;
+    if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return false;
+    const g = S.game;
+    if (!g || g.review || g.st.over || g.st.moves === 0) return !(g && g.review);
+    return S.tab !== 'play' && isHumanTurn();
+  };
   const startTab = (location.hash || '').slice(1);
   if (['play', 'tiles', 'scores', 'settings'].includes(startTab)) S.tab = startTab;
   history.replaceState(null, '', '#' + S.tab);
   setTab(S.tab, false);
   if (S.game && !S.game.st.over) tick();
+  if (tour && tutOn() && !S.game.st.over) tour.resume();   // carry on the guided game after a reload
+  // First visit: offer the guided game once.
+  if (firstVisit && tour && !tour.seen() && !COACH.offered(CarcTutorial.ID)) {
+    COACH.offer({ id: CarcTutorial.ID, title: 'New to Carcassonne?', text: 'Play one guided game against an easy computer.', yes: 'Show me', no: 'No thanks', onYes: () => startTutorial() });
+  }
   // Back into an online room after a reload (only if this browser was in one).
   function tryResume() {
     let saved = null;
@@ -1352,5 +1657,5 @@
     if (saved && saved.code && getNet()) net.resume();
   }
   if (self.CarcNet) tryResume(); else window.addEventListener('carcnet', tryResume, { once: true });
-  self.CarcApp = { get state() { return S; }, get net() { return netSnap; }, newGame, submit, pickCell };
+  self.CarcApp = { get state() { return S; }, get net() { return netSnap; }, get sel() { return sel; }, newGame, submit, pickCell, undo, startReview, reviewTo, endReview, isHumanTurn, replayTo };
 })();
