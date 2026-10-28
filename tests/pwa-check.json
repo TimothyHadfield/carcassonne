@@ -1,0 +1,10 @@
+{
+  "repo": "carcassonne",
+  "ready": "!!(window.CarcApp && document.querySelector('#world'))",
+  "play": [
+    "(async () => { const w = ms => new Promise(r => setTimeout(r, ms)); if (window.COACH && COACH.closeOffer) COACH.closeOffer(); const A = CarcApp; for (let i = 0; i < 100 && !A.isHumanTurn(); i++) await w(100); const st = A.state.game.st; window.__m = st.moves; const L = CarcEngine.legalPlacements(st)[0]; A.pickCell(L.x, L.y); document.getElementById('btn-place').click(); })()"
+  ],
+  "played": "(() => { const g = CarcApp.state.game; return !!g && g.st.moves >= window.__m + 2 && CarcApp.isHumanTurn(); })()",
+  "safe": "(() => { const b = document.querySelector('#tabs [data-tab=\"settings\"]'); if (b) b.click(); })()",
+  "debug": "JSON.stringify((() => { const g = CarcApp.state.game; return g ? { moves: g.st.moves, before: window.__m, turn: g.st.turn, human: CarcApp.isHumanTurn(), seats: g.seats } : null; })())"
+}
