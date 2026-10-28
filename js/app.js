@@ -1725,7 +1725,7 @@
   if (tour && tutOn() && !S.game.st.over) tour.resume();   // carry on the guided game after a reload
   // First visit: offer the guided game once.
   if (firstVisit && tour && !tour.seen() && !COACH.offered(CarcTutorial.ID)) {
-    COACH.offer({ id: CarcTutorial.ID, title: 'New to Carcassonne?', text: 'Play one guided game against an easy computer.', yes: 'Show me', no: 'No thanks', onYes: () => startTutorial() });
+    COACH.offer({ id: CarcTutorial.ID, title: 'New to Carcassonne?', text: 'Play one guided game against an easy computer.', yes: 'Show me', no: 'No thanks', onYes: () => startTutorial(), place: 'auto', avoid: ['#btn-place'] });
   }
   // Back into an online room after a reload (only if this browser was in one).
   function tryResume() {

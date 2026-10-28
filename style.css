@@ -456,9 +456,7 @@ input, select { font: inherit; font-size: 16px; color: var(--text); }
 /* results sheet: how this game counted */
 .stats-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 13px; }
 .stats-line .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
-/* coach: the first-visit offer sits above the phone's tab bar; the rules tabs wrap instead of scrolling sideways */
-:root { --coach-offer-bottom: calc(66px + env(safe-area-inset-bottom)); }
-@media (min-width: 900px) { :root { --coach-offer-bottom: 18px; } }
+/* coach: the first-visit offer places itself (kit 1.2.0, place 'auto'); the rules tabs wrap instead of scrolling sideways */
 .coach-rules .coach-rules-nav { flex-wrap: wrap; overflow-x: visible; row-gap: 6px; }
 .coach-rules td:first-child { white-space: nowrap; }
 

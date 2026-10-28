@@ -44,7 +44,8 @@ const iphone = pw.devices['iPhone 15'];
 
 async function open(viewport, mobile, state) {
   const ctx = await browser.newContext(mobile ? { ...iphone, viewport } : { viewport });
-  await ctx.addInitScript((s) => { try { localStorage.clear(); if (s) localStorage.setItem('carcassonne:v1', s); } catch {} }, state || null);
+  // the first-visit offer (coach 1.2.0 may sit at the top, over the zoom buttons) is answered already: this test is about zoom
+  await ctx.addInitScript((s) => { try { localStorage.clear(); if (s) localStorage.setItem('carcassonne:v1', s); localStorage.setItem('coach-offer:carc-first', 'true'); } catch {} }, state || null);
   // Firebase is not needed here; keep the test offline.
   await ctx.route(/gstatic|firebase|googleapis/, (r) => r.abort());
   const page = await ctx.newPage();
