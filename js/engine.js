@@ -64,7 +64,8 @@
       bag = bag.concat([T.LAKE], shuffle(rv));
     }
     const st = {
-      v: 1, opts, n, board: {}, groups: [], bag, cur: -1, turn: 0, moves: 0,
+      // opts.first: who places the first tile (0 when not given; the app picks it at random)
+      v: 1, opts, n, board: {}, groups: [], bag, cur: -1, turn: ((opts.first | 0) % n + n) % n, moves: 0,
       scores: new Array(n).fill(0), meeples: new Array(n).fill(MEEPLES),
       big: new Array(n).fill(opts.ic ? 1 : 0),
       bd: Array.from({ length: n }, () => ({ city: 0, road: 0, cloister: 0, farm: 0, goods: 0 })),

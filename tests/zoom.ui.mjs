@@ -136,10 +136,14 @@ async function suite(name, viewport, mobile, state) {
   return a;
 }
 
+// a fresh game where you lay the first tile (a new game picks the first player at random, and a
+// computer's opening tile would move the board in the middle of these checks)
+const fresh = () => saved(E.newGame({ players: 2, seed: 4243 }));
+
 try {
-  await suite('phone', { width: 393, height: 659 }, true);
-  await suite('phone-rotated', { width: 659, height: 393 }, true);
-  await suite('laptop', { width: 1280, height: 800 }, false);
+  await suite('phone', { width: 393, height: 659 }, true, fresh());
+  await suite('phone-rotated', { width: 659, height: 393 }, true, fresh());
+  await suite('laptop', { width: 1280, height: 800 }, false, fresh());
   const st = longGame();
   const n = Object.keys(st.board).length;
   const L = await suite('long-phone', { width: 393, height: 659 }, true, saved(st));

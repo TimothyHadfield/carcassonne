@@ -264,6 +264,8 @@
       seats = ['you', 'easy'];
       o = { farmers: true, farm: '3rd', smallCity: 4, river: false, ic: false, seed: CarcTutorial.SEED };
     }
+    // Random first player; the guided game keeps you first, the Daily game picks it from its seed.
+    o.first = kind === 'tut' ? 0 : kind === 'daily' ? (o.seed >>> 0) % seats.length : Math.floor(Math.random() * seats.length);
     const st = E.newGame(Object.assign({ players: seats.length }, o));
     S.game = { st, seats, lost: [], race: [st.scores.slice()], log: [], acts: [], gid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), helped: false, moved: false, recorded: false };
     if (day) S.game.daily = day;
@@ -293,17 +295,36 @@
     return r ? r.v : 0;
   }
 
+  // The ending is a moment: a game that ends while you watch keeps the table up
+  // (last tile outlined, the winner's plate glowing) before the results sheet.
+  const FINALE_MS = 5000, FINALE_FAST = 2500;
+  let liveKey = null, finale = null;   // liveKey: this page saw the game still going
+  const gkey = (g) => g.gid || 'net:' + ((netSnap && netSnap.code) || '');
+  function ending() { const g = S.game; return !!(g && finale && finale.live && finale.key === gkey(g) && Date.now() < finale.until); }
+
   function tick() {
     const g = S.game;
     if (!g) return;
     if (g.review) { renderPlay(); return; }
     if (g.st.over) {
       recordEnd(g);
-      renderPlay();
       // Only counts as shown once the Play tab is open, so ending on another tab still shows it later.
-      if (g.shown !== g.st.moves && S.tab === 'play') { g.shown = g.st.moves; setTimeout(showFinal, 700); }
+      const k = gkey(g);
+      if (g.shown !== g.st.moves && S.tab === 'play' && !(finale && finale.key === k)) {
+        const live = liveKey === k, ms = live ? (speed() < 1 ? FINALE_FAST : FINALE_MS) : 700, my = gen;
+        finale = { key: k, live, until: Date.now() + ms };
+        setTimeout(() => {
+          if (finale && finale.key === k) finale = null;
+          if (my !== gen || S.game !== g) return;
+          liveKey = null;
+          renderPlay();
+          if (S.tab === 'play') { g.shown = g.st.moves; showFinal(); }
+        }, ms);
+      }
+      renderPlay();
       return;
     }
+    liveKey = gkey(g);
     if (isHumanTurn() || g.online) { renderPlay(); turnFx(); return; }   // online: the host's browser runs the computers
     renderPlay();
     if (!leader) return;   // another tab of this game runs the computers
@@ -768,7 +789,7 @@
     $('players').dataset.n = g.seats.length;   // (phone on its side: plates in rows of 2 or 3)
     // Far side of the table: everyone's score plate; the others' meeples stand under theirs (yours are at your edge).
     $('players').innerHTML = g.seats.map((k, i) => `
-      <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}" data-seat="${i}" style="--pc:${RD.PLAYER[i]}">
+      <div class="pchip ${i === st.turn && !st.over ? 'turn' : ''}${st.over && !g.review && st.scores[i] === Math.max(...st.scores) ? ' won' : ''}" data-seat="${i}" style="--pc:${RD.PLAYER[i]}">
         <div class="plate"><svg viewBox="0 0 20 20"><use href="#meeple" fill="${RD.PLAYER[i]}" stroke="${i === 4 ? '#c9ccd6' : 'rgba(0,0,0,.5)'}" stroke-width="1"/></svg>
         <span class="nm">${esc(seatName(i))}</span><span class="sc">${st.scores[i]}</span></div>
         <div class="sup" title="Meeples left">${i === me ? '' : supply(i, wide ? 14 : g.seats.length >= 5 ? 9 : 12)}</div>
@@ -1002,6 +1023,8 @@
       const top = Math.max(...st.scores);
       const w = st.scores.map((v, i) => (v === top ? seatName(i) : null)).filter(Boolean);
       status.textContent = w.length > 1 ? 'Tie: ' + w.join(' & ') : (w[0] === 'You' ? 'You win!' : w[0] + ' wins');
+      // the finale: the last tile and what it scored, no buttons yet
+      if (ending()) { const L = st.last; sub.textContent = L ? (L.ev.length ? L.ev.map(describe).join(' · ') : `${seatName(L.p)} laid the last tile.`) : ''; return; }
       sub.innerHTML = `<button class="btn small" id="btn-results">Results</button> <button class="btn small primary" id="btn-new2">New game</button>`;
       return;
     }
@@ -1057,6 +1080,7 @@
 
   function renderPlay(refit) {
     if (!S.game) { newGame(); return; }
+    document.body.classList.toggle('finale', ending());
     renderPlayers();
     const own = $('zoom-own');
     own.classList.toggle('lit', !!S.set.owners); own.setAttribute('aria-pressed', String(!!S.set.owners));

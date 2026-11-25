@@ -27,6 +27,7 @@
         tb: !!o.tb,
         hand: !o.river && (o.hand === 2 || o.hand === 3) ? o.hand : 1,
         seed: Math.floor((rng || Math.random)() * 2 ** 31),
+        first: Math.floor((rng || Math.random)() * n),   // random first player
       });
       st.opts.levels = Array.from({ length: n }, (_, i) => (o.levels && o.levels[i]) || 'hard');
       st.names = (seats || []).map((s, i) => (s && s.name) || 'Player ' + (i + 1));

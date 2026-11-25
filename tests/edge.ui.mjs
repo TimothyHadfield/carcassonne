@@ -189,7 +189,8 @@ const tests = {
   // 40: storage blocked (private mode / blocked site data)
   async noStorage() {
     const { ctx, page, errors } = await open({ block: true });
-    const r = await app(page, () => { const st = self.CarcApp.state.game.st; self.CarcApp.submit(self.CarcAI.choose(st, 'hard')); return self.CarcApp.state.game.st.moves; });
+    // (the first player is random: a computer may already have laid its tile)
+    const r = await app(page, () => { const st = self.CarcApp.state.game.st, m0 = st.moves; self.CarcApp.submit(self.CarcAI.choose(st, 'hard')); return self.CarcApp.state.game.st.moves - m0; });
     ok(r === 1, 'no storage: a game starts and a move goes in');
     await page.click('#tabs [data-tab="settings"]');
     ok(await page.evaluate(() => !!document.querySelector('#fx-box .fx-set, #fx-box *')), 'no storage: settings render');
@@ -323,7 +324,9 @@ const tests = {
       if (what === 'six' && (nm === '320' || nm === 'land')) {
         await app(page, () => { const s = self.CarcApp.state.game; s.st.over = true; s.st.cur = -1; s.st.final = []; s.shown = -1; self.CarcApp.newGame.length; });
         await page.click('#tabs [data-tab="settings"]'); await page.click('#tabs [data-tab="play"]');
-        await page.waitForTimeout(2600);
+        // the game ended while this page watched it: the table stays up 5 s (the finale), then the results
+        await page.waitForFunction(() => !document.getElementById('sheet-back').hidden, null, { timeout: 9000 }).catch(() => {});
+        await page.waitForTimeout(1200);
         const r = await page.evaluate(() => { const s = document.getElementById('sheet'), n = document.getElementById('btn-new3').getBoundingClientRect(), x = document.elementFromPoint(n.left + n.width / 2, n.top + n.height / 2); return { open: !document.getElementById("sheet-back").hidden, fits: n.top >= 0 && n.bottom <= innerHeight + 1 && !!x && !!x.closest("#btn-new3"), rows: s.querySelectorAll("tr").length, n: [n.top, n.bottom, innerHeight], x: x && (x.id || x.className || x.tagName) }; });
         ok(r.open && r.fits && r.rows === 7, `${nm} six: results sheet with 6 players: New game in view and tappable ${JSON.stringify(r)}`);
         await shot(page, `six-results-${nm}`);

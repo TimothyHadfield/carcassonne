@@ -279,6 +279,21 @@ eq(sets('ic').reduce((a, t) => a + t.count * t.feats.filter((f) => f.cathedral).
   E.apply(st, { type: 'place', x: a.x, y: a.y, r: a.r, fi: -1 });
   eq(JSON.stringify(st), before, 'apply() does not change the old state');
 }
+{
+  // Random first player: opts.first places the first tile, play goes round from there
+  const st = E.newGame({ players: 3, seed: 5, first: 2 });
+  eq(st.turn, 2, 'first player 2 places first');
+  const a = E.legalPlacements(st)[0];
+  E.applyMut(st, { type: 'place', x: a.x, y: a.y, r: a.r, fi: -1 });
+  eq(st.turn, 0, 'then player 0');
+  eq(E.newGame({ players: 3, seed: 5 }).turn, 0, 'no first given: player 0');
+  const h = E.newGame({ players: 2, seed: 5, hand: 2, first: 1 });
+  eq(h.turn, 1, 'hand of tiles: first player 1 starts');
+  eq(h.cur, h.hands[1][0], 'and holds the tile in play');
+  const G = require('../js/game.js'), seen = new Set();
+  for (let i = 0; i < 40; i++) seen.add(G.setup(4, {}, Math.random, []).turn);
+  eq(seen.size > 1, true, 'online: the first player is random (' + [...seen].join(',') + ')');
+}
 
 done('engine');
 
