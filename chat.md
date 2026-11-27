@@ -57,3 +57,9 @@
 - **Verified:** `tests/tb.test.js` 55/55, new `tests/tb.ui.mjs` 38/38 WebKit at 393 + 320 (old code: 5 fail, crash); engine 164, improve 17, odds 15, online 18, zoom 60 (x4), fx 50 (x6 in a row), edge 121, improve.ui 35, vis 40, pwa-check 18/18 (1 flake in 4); ladder: T&B Hard–Med 72.8%, Med–Easy 93.0%; Hand 2: 82.8 / 94.0%; videos: oEmbed 200 + title match on 2026-10-28; shots at 393, 320, 659x393, 1280, 1440 with 0 errors and no overflow.
 - **Open:** Tim's calls on the T&B/hand looks and wording; online with T&B/hand in two real browsers; real iPhone.
 - **Kit sweep v15 (same day, builder A1):** game-coach 1.2.0 + game-pwa 1.4.0 re-copied, offer `place:'auto'` avoiding Place (old offer-bottom override removed; zoom.ui marks the offer answered); offer clear of tab bar + Place at 393×659 / 320×568 / 659×393, settings 320 px no sideways scroll, no selects; engine/odds/improve/tb/online + all 6 UI suites green, pwa-check 18/18.
+
+## 2026-11-27 — fit pass (all games)
+- **Asked:** Tim: "go through every game in the cite and make sure that they all are good in theat aspect specifically" (spacing, sizing, seeing everything). No restyle.
+- **Built:** tiles-left count 11 -> 13 px; plate names wrap to 2 lines instead of "Medium..."; 3 players on an upright phone use the coloured plate edge so names fit; phone on its side with 2-3 players stacks plates one per row; style.css v17, pwa v17.
+- **Verified:** new `tests/fit-ui.mjs` (61-tile 5-player, 3-player, 2-player at 393/320/659x393/1280/1440, WebKit) 256/256, 21 fails on old code; engine 170, odds 15, online 18, improve 17, tb 55, zoom 60, fx 50, edge 121, vis 40, improve.ui 35, tb.ui 38, pwa-check 18/18.
+- **Open:** 16-character online names not run; real iPhone.
